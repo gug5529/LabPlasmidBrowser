@@ -221,9 +221,6 @@ export default function App() {
                 ) : null}
               </div>
             </div>
-            <div style={styles.signedIn}>
-              {authEmail ? `Signed in: ${authEmail}` : <div id="signin-btn" />}
-            </div>
           </div>
 
           {/* Controls：固定寬度兩欄（手機也固定兩欄） */}
@@ -317,6 +314,11 @@ export default function App() {
           Tip: 「Group → Other」會只顯示非 Level 0/1/2 的工作表；<code>all_plasmids</code> 已自動忽略。
         </p>
       </main>
+<footer style={styles.footer}>
+  <div style={styles.footerInner}>
+    {authEmail ? `Signed in: ${authEmail}` : <div id="signin-btn" />}
+  </div>
+</footer>
     </div>
   );
 }
