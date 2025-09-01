@@ -1,4 +1,3 @@
-// src/App.jsx
 import { useEffect, useMemo, useState } from "react";
 
 const CONFIG = {
@@ -21,10 +20,7 @@ function fetchJSONP(url) {
   return new Promise((resolve, reject) => {
     const cb = "__jsonp_" + Math.random().toString(36).slice(2);
     const script = document.createElement("script");
-    window[cb] = (data) => {
-      try { resolve(data); }
-      finally { delete window[cb]; script.remove(); }
-    };
+    window[cb] = (data) => { try { resolve(data); } finally { delete window[cb]; script.remove(); } };
     script.src = url + (url.includes("?") ? "&" : "?") + "callback=" + cb;
     script.onerror = () => { delete window[cb]; script.remove(); reject(new Error("JSONP load error")); };
     document.body.appendChild(script);
@@ -57,7 +53,7 @@ export default function App() {
 
   const [q, setQ] = useState("");
   const [member, setMember] = useState("all");
-  const [group, setGroup] = useState("all"); // 只有 all / Other
+  const [group, setGroup] = useState("all");   // 只有 all / Other
   const [worksheet, setWorksheet] = useState("all");
   const [sortKey, setSortKey] = useState("Plasmid_Name");
   const [sortDir, setSortDir] = useState("asc");
@@ -80,7 +76,6 @@ export default function App() {
       });
 
       google.accounts.id.prompt();
-      // 按鈕只渲染到 footer 的這個容器
       const el = document.getElementById("signin-btn");
       if (el) google.accounts.id.renderButton(el, { theme: "outline", size: "large" });
     }
@@ -206,62 +201,58 @@ export default function App() {
   return (
     <div style={styles.page}>
       <main style={styles.main}>
-
-        {/* 共用水平卷軸容器：讓 Header+Select 與表格一起左右滑 */}
-        <div style={styles.hscroll}>
-
-          {/* 置頂區（垂直 sticky；寬度與表格對齊） */}
-          <div style={styles.stickyTop}>
-            <div style={{ ...styles.stickyInner, ...styles.contentMin }}>
-              <div style={styles.header}>
-                <div style={styles.headerLeft}>
-                  <div style={styles.logo}>PB</div>
-                  <div>
-                    <div style={styles.title}>Plasmid Browser</div>
-                    <div style={{ marginTop: 6 }}>
-                      <input
-                        value={q}
-                        onChange={(e) => { setQ(e.target.value); setPage(1); }}
-                        placeholder="keyword search"
-                        style={styles.search}
-                      />
-                    </div>
-                    {data.updatedAt ? (
-                      <div style={styles.subtitle}>Updated: {new Date(data.updatedAt).toLocaleString()}</div>
-                    ) : null}
+        {/* Sticky：Header + 搜尋 + 四個 Select（不跟著水平捲動） */}
+        <div style={styles.stickyTop}>
+          <div style={styles.stickyInner}>
+            <div style={styles.header}>
+              <div style={styles.headerLeft}>
+                <div style={styles.logo}>PB</div>
+                <div>
+                  <div style={styles.title}>Plasmid Browser</div>
+                  <div style={{ marginTop: 6 }}>
+                    <input
+                      value={q}
+                      onChange={(e) => { setQ(e.target.value); setPage(1); }}
+                      placeholder="keyword search"
+                      style={styles.search}
+                    />
                   </div>
-                </div>
-              </div>
-
-              {/* Controls：固定兩欄窄寬 */}
-              <div className="controls" style={styles.controls}>
-                <div style={styles.controlCol}>
-                  <Select label="Member" value={member} onChange={setMember} options={memberOptions} />
-                  <Select label="Worksheet" value={worksheet} onChange={setWorksheet} options={worksheetOptions} />
-                </div>
-                <div style={styles.controlCol}>
-                  <Select label="Group" value={group} onChange={setGroup} options={groupOptions} />
-                  <Select
-                    label="Sort"
-                    value={sortKey + ":" + sortDir}
-                    onChange={(v) => {
-                      const [k, d] = String(v).split(":");
-                      setSortKey(k); setSortDir(d || "asc");
-                    }}
-                    options={columns.flatMap((c) => [c.key + ":asc", c.key + ":desc"])}
-                    renderOption={(opt) => {
-                      const v = (typeof opt === "string" ? opt : opt.value);
-                      const [k, d] = String(v).split(":");
-                      const col = columns.find((c) => c.key === k);
-                      return (col ? col.label : k) + " (" + (d || "asc") + ")";
-                    }}
-                  />
+                  {data.updatedAt ? (
+                    <div style={styles.subtitle}>Updated: {new Date(data.updatedAt).toLocaleString()}</div>
+                  ) : null}
                 </div>
               </div>
             </div>
-          </div>
 
-          {/* 表格卡片（與上方共用同一個水平卷軸） */}
+            <div className="controls" style={styles.controls}>
+              <div style={styles.controlCol}>
+                <Select label="Member" value={member} onChange={setMember} options={memberOptions} />
+                <Select label="Worksheet" value={worksheet} onChange={setWorksheet} options={worksheetOptions} />
+              </div>
+              <div style={styles.controlCol}>
+                <Select label="Group" value={group} onChange={setGroup} options={groupOptions} />
+                <Select
+                  label="Sort"
+                  value={sortKey + ":" + sortDir}
+                  onChange={(v) => {
+                    const [k, d] = String(v).split(":");
+                    setSortKey(k); setSortDir(d || "asc");
+                  }}
+                  options={columns.flatMap((c) => [c.key + ":asc", c.key + ":desc"])}
+                  renderOption={(opt) => {
+                    const v = (typeof opt === "string" ? opt : opt.value);
+                    const [k, d] = String(v).split(":");
+                    const col = columns.find((c) => c.key === k);
+                    return (col ? col.label : k) + " (" + (d || "asc") + ")";
+                  }}
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* 表格專用的水平捲軸（只包表格卡片） */}
+        <div style={styles.hscroll}>
           <div style={{ ...styles.card, ...styles.contentMin }}>
             <div style={styles.cardTop}>
               <span style={{ color: "#4b5563", fontSize: 14 }}>
@@ -275,12 +266,7 @@ export default function App() {
                 <thead style={{ background: "#f3f4f6" }}>
                   <tr>
                     {columns.map((c) => (
-                      <th
-                        key={c.key}
-                        style={styles.th}
-                        onClick={() => changeSort(c.key)}
-                        title="Click to sort"
-                      >
+                      <th key={c.key} style={styles.th} onClick={() => changeSort(c.key)} title="Click to sort">
                         {c.label}{sortKey === c.key ? (sortDir === "asc" ? " ▲" : " ▼") : ""}
                       </th>
                     ))}
@@ -290,9 +276,7 @@ export default function App() {
                 <tbody>
                   {pageRows.length === 0 && !loading ? (
                     <tr>
-                      <td colSpan={columns.length + 1} style={styles.empty}>
-                        No matches. Try a different keyword or filter.
-                      </td>
+                      <td colSpan={columns.length + 1} style={styles.empty}>No matches. Try a different keyword or filter.</td>
                     </tr>
                   ) : (
                     pageRows.map((r, i) => (
@@ -324,7 +308,6 @@ export default function App() {
               </div>
             </div>
           </div>
-
         </div>
 
         <p style={{ marginTop: 8, fontSize: 12, color: "#6b7280" }}>
@@ -332,7 +315,7 @@ export default function App() {
         </p>
       </main>
 
-      {/* Footer：只在這裡顯示登入狀態或渲染 Google 按鈕 */}
+      {/* Footer：登入狀態/按鈕 */}
       <footer style={styles.footer}>
         <div style={styles.footerInner}>
           {authEmail ? `Signed in: ${authEmail}` : <div id="signin-btn" />}
@@ -346,15 +329,7 @@ export default function App() {
 function Select({ label, value, onChange, options, renderOption }) {
   const norm = (opt) => (typeof opt === "string" ? { value: opt, label: opt } : opt);
   return (
-    <label
-      style={{
-        display: "flex",
-        flexDirection: "column",
-        fontSize: 14,
-        gap: 4,
-        width: "min(45vw, 180px)",   // 每個選單最寬 180px，最多 45vw
-      }}
-    >
+    <label style={{ display: "flex", flexDirection: "column", fontSize: 14, gap: 4, width: "min(45vw, 180px)" }}>
       <span style={{ color: "#374151" }}>{label}</span>
       <select
         value={value}
@@ -427,16 +402,11 @@ const styles = {
 
   main: { maxWidth: 1120, margin: "0 auto", padding: 16 },
 
-  // 讓 Header+Controls 與 表格共用同一個水平卷軸
-  hscroll: {
-    overflowX: "auto",
-    WebkitOverflowScrolling: "touch",
-  },
-  contentMin: {
-    minWidth: 980, // 與表格寬對齊（可自行調整）
-  },
+  // 表格水平捲動（Header/Select 不跟著捲）
+  hscroll: { overflowX: "auto", WebkitOverflowScrolling: "touch" },
+  contentMin: { minWidth: 980 }, // 表格/卡片最小寬（可調）
 
-  /* 置頂容器（把 header + controls 鎖在頂部） */
+  // Sticky Header（滿版，不參與水平捲動）
   stickyTop: {
     position: "sticky",
     top: 0,
@@ -445,27 +415,14 @@ const styles = {
     backdropFilter: "saturate(180%) blur(6px)",
     borderBottom: "1px solid #e5e7eb",
   },
-  stickyInner: {
-    maxWidth: "unset",      // 由 contentMin 控制寬度
-    margin: "0 auto",
-    padding: "10px 16px 12px",
-  },
+  stickyInner: { maxWidth: 1120, margin: "0 auto", padding: "10px 16px 12px" },
 
-  /* Header */
-  header: {
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "flex-start", // 避免右側多餘空白
-    gap: 12,
-    marginBottom: 8,
-  },
+  header: { display: "flex", alignItems: "center", justifyContent: "flex-start", gap: 12, marginBottom: 8 },
   headerLeft: { display: "flex", alignItems: "center", gap: 12 },
   logo: {
     width: 48, height: 48, borderRadius: 8,
     background: "#16a34a", color: "white", fontWeight: 800,
-    border: "3px solid #111827",
-    display: "flex", alignItems: "center", justifyContent: "center",
-    letterSpacing: 1,
+    border: "3px solid #111827", display: "flex", alignItems: "center", justifyContent: "center", letterSpacing: 1,
   },
   title: { fontSize: 22, fontWeight: 800, color: "#111827" },
   subtitle: { marginTop: 6, fontSize: 12, color: "#6b7280" },
@@ -492,12 +449,7 @@ const styles = {
     justifyContent: "start",
     justifyItems: "start",
   },
-  controlCol: {
-    display: "grid",
-    gridTemplateRows: "auto auto",
-    gap: 8,
-    width: "max-content",
-  },
+  controlCol: { display: "grid", gridTemplateRows: "auto auto", gap: 8, width: "max-content" },
 
   // 表格卡片
   card: { background: "white", border: "1px solid #e5e7eb", borderRadius: 16, overflow: "hidden", boxShadow: "0 1px 2px rgba(0,0,0,0.04)" },
@@ -510,23 +462,10 @@ const styles = {
   btn: { border: "1px solid #e5e7eb", background: "white", padding: "6px 10px", borderRadius: 8, cursor: "pointer" },
 
   // Footer（登入）
-  footer: {
-    borderTop: "1px solid #e5e7eb",
-    background: "#ffffff",
-    marginTop: 12,
-    padding: "10px 16px",
-  },
-  footerInner: {
-    maxWidth: 1120,
-    margin: "0 auto",
-    fontSize: 12,
-    color: "#6b7280",
-    display: "flex",
-    justifyContent: "flex-end",
-    alignItems: "center",
-  },
+  footer: { borderTop: "1px solid #e5e7eb", background: "#ffffff", marginTop: 12, padding: "10px 16px" },
+  footerInner: { maxWidth: 1120, margin: "0 auto", fontSize: 12, color: "#6b7280", display: "flex", justifyContent: "flex-end", alignItems: "center" },
 
-  // Benchling 欄
+  // Benchling 欄位樣式
   linkBtn: {
     display: "inline-block",
     border: "1px solid #e5e7eb",
