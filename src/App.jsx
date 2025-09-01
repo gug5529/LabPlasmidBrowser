@@ -1,3 +1,4 @@
+// src/App.jsx
 import { useEffect, useMemo, useState } from "react";
 
 const CONFIG = {
@@ -20,7 +21,10 @@ function fetchJSONP(url) {
   return new Promise((resolve, reject) => {
     const cb = "__jsonp_" + Math.random().toString(36).slice(2);
     const script = document.createElement("script");
-    window[cb] = (data) => { try { resolve(data); } finally { delete window[cb]; script.remove(); } };
+    window[cb] = (data) => {
+      try { resolve(data); }
+      finally { delete window[cb]; script.remove(); }
+    };
     script.src = url + (url.includes("?") ? "&" : "?") + "callback=" + cb;
     script.onerror = () => { delete window[cb]; script.remove(); reject(new Error("JSONP load error")); };
     document.body.appendChild(script);
@@ -76,6 +80,7 @@ export default function App() {
       });
 
       google.accounts.id.prompt();
+      // 按鈕只渲染到 footer 的這個容器
       const el = document.getElementById("signin-btn");
       if (el) google.accounts.id.renderButton(el, { theme: "outline", size: "large" });
     }
@@ -102,7 +107,7 @@ export default function App() {
           const res = await fetch(url, { cache: "no-store" });
           if (!res.ok) throw new Error("HTTP " + res.status);
           json = await res.json();
-        } catch (err) {
+        } catch {
           json = await fetchJSONP(url);
         }
 
@@ -200,125 +205,139 @@ export default function App() {
 
   return (
     <div style={styles.page}>
-      {/* 置頂區：Header + 搜尋 + 登入 + 四個選單 */}
-      <div style={styles.stickyTop}>
-        <div style={styles.stickyInner}>
-          <div style={styles.header}>
-            <div style={styles.headerLeft}>
-              <div style={styles.logo}>PB</div>
-              <div>
-                <div style={styles.title}>Plasmid Browser</div>
-                <div style={{ marginTop: 6 }}>
-                  <input
-                    value={q}
-                    onChange={(e) => { setQ(e.target.value); setPage(1); }}
-                    placeholder="keyword search"
-                    style={styles.search}
+      <main style={styles.main}>
+
+        {/* 共用水平卷軸容器：讓 Header+Select 與表格一起左右滑 */}
+        <div style={styles.hscroll}>
+
+          {/* 置頂區（垂直 sticky；寬度與表格對齊） */}
+          <div style={styles.stickyTop}>
+            <div style={{ ...styles.stickyInner, ...styles.contentMin }}>
+              <div style={styles.header}>
+                <div style={styles.headerLeft}>
+                  <div style={styles.logo}>PB</div>
+                  <div>
+                    <div style={styles.title}>Plasmid Browser</div>
+                    <div style={{ marginTop: 6 }}>
+                      <input
+                        value={q}
+                        onChange={(e) => { setQ(e.target.value); setPage(1); }}
+                        placeholder="keyword search"
+                        style={styles.search}
+                      />
+                    </div>
+                    {data.updatedAt ? (
+                      <div style={styles.subtitle}>Updated: {new Date(data.updatedAt).toLocaleString()}</div>
+                    ) : null}
+                  </div>
+                </div>
+              </div>
+
+              {/* Controls：固定兩欄窄寬 */}
+              <div className="controls" style={styles.controls}>
+                <div style={styles.controlCol}>
+                  <Select label="Member" value={member} onChange={setMember} options={memberOptions} />
+                  <Select label="Worksheet" value={worksheet} onChange={setWorksheet} options={worksheetOptions} />
+                </div>
+                <div style={styles.controlCol}>
+                  <Select label="Group" value={group} onChange={setGroup} options={groupOptions} />
+                  <Select
+                    label="Sort"
+                    value={sortKey + ":" + sortDir}
+                    onChange={(v) => {
+                      const [k, d] = String(v).split(":");
+                      setSortKey(k); setSortDir(d || "asc");
+                    }}
+                    options={columns.flatMap((c) => [c.key + ":asc", c.key + ":desc"])}
+                    renderOption={(opt) => {
+                      const v = (typeof opt === "string" ? opt : opt.value);
+                      const [k, d] = String(v).split(":");
+                      const col = columns.find((c) => c.key === k);
+                      return (col ? col.label : k) + " (" + (d || "asc") + ")";
+                    }}
                   />
                 </div>
-                {data.updatedAt ? (
-                  <div style={styles.subtitle}>Updated: {new Date(data.updatedAt).toLocaleString()}</div>
-                ) : null}
               </div>
             </div>
           </div>
 
-          {/* Controls：固定寬度兩欄（手機也固定兩欄） */}
-          <div className="controls" style={styles.controls}>
-            <div style={styles.controlCol}>
-              <Select label="Member" value={member} onChange={setMember} options={memberOptions} />
-              <Select label="Worksheet" value={worksheet} onChange={setWorksheet} options={worksheetOptions} />
+          {/* 表格卡片（與上方共用同一個水平卷軸） */}
+          <div style={{ ...styles.card, ...styles.contentMin }}>
+            <div style={styles.cardTop}>
+              <span style={{ color: "#4b5563", fontSize: 14 }}>
+                {loading ? "Loading…" : total + " result" + (total === 1 ? "" : "s")}
+              </span>
+              {error ? <span style={{ color: "#b91c1c", fontSize: 14 }}>{error}</span> : null}
             </div>
-            <div style={styles.controlCol}>
-              <Select label="Group" value={group} onChange={setGroup} options={groupOptions} />
-              <Select
-                label="Sort"
-                value={sortKey + ":" + sortDir}
-                onChange={(v) => { const [k, d] = String(v).split(":"); setSortKey(k); setSortDir(d || "asc"); }}
-                options={columns.flatMap((c) => [c.key + ":asc", c.key + ":desc"])}
-                renderOption={(opt) => {
-                  const v = (typeof opt === "string" ? opt : opt.value);
-                  const [k, d] = String(v).split(":");
-                  const col = columns.find((c) => c.key === k);
-                  return (col ? col.label : k) + " (" + (d || "asc") + ")";
-                }}
-              />
-            </div>
-          </div>
-        </div>
-      </div>
 
-      {!idToken ? (
-        <div style={{ padding: 16 }}>請先使用 Google 帳號登入（Workspace 或白名單 Gmail）。</div>
-      ) : null}
-
-      {/* 表格保持原本寬度與水平卷軸 */}
-      <main style={styles.main}>
-        <div style={styles.card}>
-          <div style={styles.cardTop}>
-            <span style={{ color: "#4b5563", fontSize: 14 }}>
-              {loading ? "Loading…" : total + " result" + (total === 1 ? "" : "s")}
-            </span>
-            {error ? <span style={{ color: "#b91c1c", fontSize: 14 }}>{error}</span> : null}
-          </div>
-
-          <div style={{ overflowX: "auto" }}>
-            <table style={styles.table}>
-              <thead style={{ background: "#f3f4f6" }}>
-                <tr>
-                  {columns.map((c) => (
-                    <th key={c.key} style={styles.th} onClick={() => changeSort(c.key)} title="Click to sort">
-                      {c.label}{sortKey === c.key ? (sortDir === "asc" ? " ▲" : " ▼") : ""}
-                    </th>
-                  ))}
-                  <th style={{ ...styles.th, textAlign: "right" }}>Member / Sheet</th>
-                </tr>
-              </thead>
-              <tbody>
-                {pageRows.length === 0 && !loading ? (
+            <div>
+              <table style={styles.table}>
+                <thead style={{ background: "#f3f4f6" }}>
                   <tr>
-                    <td colSpan={columns.length + 1} style={styles.empty}>No matches. Try a different keyword or filter.</td>
+                    {columns.map((c) => (
+                      <th
+                        key={c.key}
+                        style={styles.th}
+                        onClick={() => changeSort(c.key)}
+                        title="Click to sort"
+                      >
+                        {c.label}{sortKey === c.key ? (sortDir === "asc" ? " ▲" : " ▼") : ""}
+                      </th>
+                    ))}
+                    <th style={{ ...styles.th, textAlign: "right" }}>Member / Sheet</th>
                   </tr>
-                ) : (
-                  pageRows.map((r, i) => (
-                    <tr key={i} style={{ background: i % 2 ? "#ffffff" : "#fafafa" }}>
-                      {columns.map((c) => (
-                        <td key={c.key} style={styles.td}>
-                          {renderCell(c.key, r)}
-                        </td>
-                      ))}
-                      <td style={{ ...styles.td, textAlign: "right", whiteSpace: "nowrap", fontSize: 12, color: "#6b7280" }}>
-                        {(r.memberId || r.memberName) + " · " + (r.worksheet || "")}
+                </thead>
+                <tbody>
+                  {pageRows.length === 0 && !loading ? (
+                    <tr>
+                      <td colSpan={columns.length + 1} style={styles.empty}>
+                        No matches. Try a different keyword or filter.
                       </td>
                     </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
+                  ) : (
+                    pageRows.map((r, i) => (
+                      <tr key={i} style={{ background: i % 2 ? "#ffffff" : "#fafafa" }}>
+                        {columns.map((c) => (
+                          <td key={c.key} style={styles.td}>
+                            {renderCell(c.key, r)}
+                          </td>
+                        ))}
+                        <td style={{ ...styles.td, textAlign: "right", whiteSpace: "nowrap", fontSize: 12, color: "#6b7280" }}>
+                          {(r.memberId || r.memberName) + " · " + (r.worksheet || "")}
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+
+            <div style={styles.cardBottom}>
+              <div>
+                Page {page} / {pageCount} {total > 0 ? " · Showing " + (start + 1) + "–" + Math.min(total, start + CONFIG.PAGE_SIZE) : ""}
+              </div>
+              <div style={{ display: "flex", gap: 6 }}>
+                <button style={styles.btn} disabled={page <= 1} onClick={() => setPage(1)}>First</button>
+                <button style={styles.btn} disabled={page <= 1} onClick={() => setPage(Math.max(1, page - 1))}>Prev</button>
+                <button style={styles.btn} disabled={page >= pageCount} onClick={() => setPage(Math.min(pageCount, page + 1))}>Next</button>
+                <button style={styles.btn} disabled={page >= pageCount} onClick={() => setPage(pageCount)}>Last</button>
+              </div>
+            </div>
           </div>
 
-          <div style={styles.cardBottom}>
-            <div>
-              Page {page} / {pageCount} {total > 0 ? " · Showing " + (start + 1) + "–" + Math.min(total, start + CONFIG.PAGE_SIZE) : ""}
-            </div>
-            <div style={{ display: "flex", gap: 6 }}>
-              <button style={styles.btn} disabled={page <= 1} onClick={() => setPage(1)}>First</button>
-              <button style={styles.btn} disabled={page <= 1} onClick={() => setPage(Math.max(1, page - 1))}>Prev</button>
-              <button style={styles.btn} disabled={page >= pageCount} onClick={() => setPage(Math.min(pageCount, page + 1))}>Next</button>
-              <button style={styles.btn} disabled={page >= pageCount} onClick={() => setPage(pageCount)}>Last</button>
-            </div>
-          </div>
         </div>
 
         <p style={{ marginTop: 8, fontSize: 12, color: "#6b7280" }}>
           Tip: 「Group → Other」會只顯示非 Level 0/1/2 的工作表；<code>all_plasmids</code> 已自動忽略。
         </p>
       </main>
-<footer style={styles.footer}>
-  <div style={styles.footerInner}>
-    {authEmail ? `Signed in: ${authEmail}` : <div id="signin-btn" />}
-  </div>
-</footer>
+
+      {/* Footer：只在這裡顯示登入狀態或渲染 Google 按鈕 */}
+      <footer style={styles.footer}>
+        <div style={styles.footerInner}>
+          {authEmail ? `Signed in: ${authEmail}` : <div id="signin-btn" />}
+        </div>
+      </footer>
     </div>
   );
 }
@@ -328,14 +347,14 @@ function Select({ label, value, onChange, options, renderOption }) {
   const norm = (opt) => (typeof opt === "string" ? { value: opt, label: opt } : opt);
   return (
     <label
-  style={{
-    display: "flex",
-    flexDirection: "column",
-    fontSize: 14,
-    gap: 4,
-    width: "min(45vw, 180px)",   // 每個選單最寬 180px，最多 45vw
-  }}
->
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        fontSize: 14,
+        gap: 4,
+        width: "min(45vw, 180px)",   // 每個選單最寬 180px，最多 45vw
+      }}
+    >
       <span style={{ color: "#374151" }}>{label}</span>
       <select
         value={value}
@@ -345,8 +364,8 @@ function Select({ label, value, onChange, options, renderOption }) {
           borderRadius: 8,
           padding: "6px 8px",
           fontSize: 14,
-          background: "#fff",         // 白底
-          color: "#111827",           // 黑字
+          background: "#fff",
+          color: "#111827",
           appearance: "auto",
           WebkitAppearance: "menulist",
           MozAppearance: "menulist",
@@ -406,6 +425,17 @@ function naturalCompare(a, b) {
 const styles = {
   page: { minHeight: "100vh", background: "#f9fafb", color: "#111827" },
 
+  main: { maxWidth: 1120, margin: "0 auto", padding: 16 },
+
+  // 讓 Header+Controls 與 表格共用同一個水平卷軸
+  hscroll: {
+    overflowX: "auto",
+    WebkitOverflowScrolling: "touch",
+  },
+  contentMin: {
+    minWidth: 980, // 與表格寬對齊（可自行調整）
+  },
+
   /* 置頂容器（把 header + controls 鎖在頂部） */
   stickyTop: {
     position: "sticky",
@@ -416,36 +446,29 @@ const styles = {
     borderBottom: "1px solid #e5e7eb",
   },
   stickyInner: {
-    maxWidth: 1120,
+    maxWidth: "unset",      // 由 contentMin 控制寬度
     margin: "0 auto",
     padding: "10px 16px 12px",
   },
 
-  /* Header （不再 sticky，交給 stickyTop 外層） */
+  /* Header */
   header: {
     display: "flex",
     alignItems: "center",
-    justifyContent: "space-between",
+    justifyContent: "flex-start", // 避免右側多餘空白
     gap: 12,
     marginBottom: 8,
   },
   headerLeft: { display: "flex", alignItems: "center", gap: 12 },
   logo: {
-  width: 48,
-  height: 48,
-  borderRadius: 8,
-  background: "#16a34a",
-  color: "white",
-  fontWeight: 800,
-  border: "3px solid #111827",   // 黑色外框
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "center",
-  letterSpacing: 1,
-},
+    width: 48, height: 48, borderRadius: 8,
+    background: "#16a34a", color: "white", fontWeight: 800,
+    border: "3px solid #111827",
+    display: "flex", alignItems: "center", justifyContent: "center",
+    letterSpacing: 1,
+  },
   title: { fontSize: 22, fontWeight: 800, color: "#111827" },
   subtitle: { marginTop: 6, fontSize: 12, color: "#6b7280" },
-  signedIn: { fontSize: 12, color: "#6b7280", display: "flex", alignItems: "center" },
 
   // 搜尋框：白底黑字
   search: {
@@ -459,34 +482,49 @@ const styles = {
     outline: "none",
   },
 
-  // Controls：兩欄（固定半寬）
- controls: {
-  display: "grid",
-  gridTemplateColumns: "max-content max-content", // ← 關鍵：兩欄寬度=內容寬
-  columnGap: 12,
-  rowGap: 8,
-  alignItems: "start",
-  justifyContent: "start",   // 整組靠左
-  justifyItems: "start",      // item 不拉伸
-},
+  // Controls：兩欄（固定窄寬）
+  controls: {
+    display: "grid",
+    gridTemplateColumns: "max-content max-content",
+    columnGap: 12,
+    rowGap: 8,
+    alignItems: "start",
+    justifyContent: "start",
+    justifyItems: "start",
+  },
   controlCol: {
-  display: "grid",
-  gridTemplateRows: "auto auto",
-  gap: 8,
-  width: "max-content",       // ← 不撐滿
-},
+    display: "grid",
+    gridTemplateRows: "auto auto",
+    gap: 8,
+    width: "max-content",
+  },
 
-  /* 內容區：表格獨立水平捲動 */
-  main: { maxWidth: 1120, margin: "0 auto", padding: 16 },
-
+  // 表格卡片
   card: { background: "white", border: "1px solid #e5e7eb", borderRadius: 16, overflow: "hidden", boxShadow: "0 1px 2px rgba(0,0,0,0.04)" },
   cardTop: { display: "flex", justifyContent: "space-between", padding: "8px 12px", borderBottom: "1px solid #e5e7eb" },
-  table: { width: "100%", borderCollapse: "collapse", fontSize: 14 },
+  table: { width: "100%", borderCollapse: "collapse", fontSize: 14, minWidth: 980 },
   th: { textAlign: "left", padding: "10px 12px", whiteSpace: "nowrap", cursor: "pointer" },
   td: { padding: "10px 12px", verticalAlign: "top" },
   empty: { padding: "32px 12px", textAlign: "center", color: "#6b7280" },
   cardBottom: { display: "flex", justifyContent: "space-between", padding: "8px 12px", borderTop: "1px solid #e5e7eb", fontSize: 14 },
   btn: { border: "1px solid #e5e7eb", background: "white", padding: "6px 10px", borderRadius: 8, cursor: "pointer" },
+
+  // Footer（登入）
+  footer: {
+    borderTop: "1px solid #e5e7eb",
+    background: "#ffffff",
+    marginTop: 12,
+    padding: "10px 16px",
+  },
+  footerInner: {
+    maxWidth: 1120,
+    margin: "0 auto",
+    fontSize: 12,
+    color: "#6b7280",
+    display: "flex",
+    justifyContent: "flex-end",
+    alignItems: "center",
+  },
 
   // Benchling 欄
   linkBtn: {
