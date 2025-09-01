@@ -84,51 +84,54 @@ export default function App() {
     return () => window.removeEventListener("load", init);
   }, []);
 
-  useEffect(() => {
-    if (!idToken) return;
+useEffect(() => {
+  if (!idToken) return;
 
-    let alive = true;
-    (async () => {
+  let alive = true;
+  (async () => {
+    try {
+      setLoading(true);
+
+      const base = CONFIG.DATA_URL;
+      const url =
+        base + (base.includes("?") ? "&" : "?") +
+        "idToken=" + encodeURIComponent(idToken);
+
+      let json;
       try {
-        setLoading(true);
-        const base = CONFIG.DATA_URL;
-        const url = base + (base.includes("?") ? "&" : "?") + "idToken=" + encodeURIComponent(idToken);
-
-        let json;
-        try {
-          const res = await fetch(url, { cache: "no-store" });
-          if (!res.ok) throw new Error("HTTP " + res.status);
-          json = await res.json();
-        } catch (err) {
-          if (String(base).includes("script.googleusercontent.com/macros/echo")) {
-            json = await fetchJSONP(url);
-          } else {
-            throw err;
-          }
-        }
-        if (json.error) throw new Error(json.error + (json.reason ? ": " + json.reason : ""));
-
-        // 前端再次保險：忽略 all_plasmids，並標記是否為 Other
-        const rows = (json.rows || [])
-          .filter(r => !isAllPlasmids(r.worksheet))
-          .map(r => ({
-            ...r,
-            wsIsOther: !isLevel012(r.worksheet), // true => 這個工作表屬於 Other
-            Benchling: normalizeBenchling(r.Benchling),
-          }));
-
-        if (!alive) return;
-        setData({ members: json.members || [], rows, updatedAt: json.updatedAt || null });
-        setError("");
-      } catch (e) {
-        if (alive) setError(String(e?.message || e));
-      } finally {
-        if (alive) setLoading(false);
+        // 先用標準 fetch
+        const res = await fetch(url, { cache: "no-store" });
+        if (!res.ok) throw new Error("HTTP " + res.status);
+        json = await res.json();
+      } catch (err) {
+        // 任何原因失敗都用 JSONP 後援
+        json = await fetchJSONP(url);
       }
-    })();
 
-    return () => { alive = false; };
-  }, [idToken]);
+      if (json.error) throw new Error(json.error + (json.reason ? ": " + json.reason : ""));
+
+      // 前端保險：忽略 all_plasmids，並標記 Other
+      const rows = (json.rows || [])
+        .filter(r => !isAllPlasmids(r.worksheet))
+        .map(r => ({
+          ...r,
+          wsIsOther: !isLevel012(r.worksheet),
+          Benchling: normalizeBenchling(r.Benchling),
+        }));
+
+      if (!alive) return;
+      setData({ members: json.members || [], rows, updatedAt: json.updatedAt || null });
+      setError("");
+    } catch (e) {
+      if (alive) setError(String(e?.message || e));
+    } finally {
+      if (alive) setLoading(false);
+    }
+  })();
+
+  return () => { alive = false; };
+}, [idToken]);
+
 
   useEffect(() => {
     setWorksheet("all");
@@ -243,7 +246,7 @@ export default function App() {
             value={sortKey + ":" + sortDir}
             onChange={(v) => { const [k, d] = String(v).split(":"); setSortKey(k); setSortDir(d || "asc"); }}
             options={columns.flatMap((c) => [c.key + ":asc", c.key + ":desc"])}
-            Option={(opt) => {
+            renderOption={(opt) => {         // ← 用 renderOption
               const v = (typeof opt === 'string' ? opt : opt.value);
               const [k, d] = String(v).split(":");
               const col = columns.find((c) => c.key === k);
@@ -282,7 +285,7 @@ export default function App() {
                     <tr key={i} style={{ background: i % 2 ? "#ffffff" : "#fafafa" }}>
                       {columns.map((c) => (
                         <td key={c.key} style={styles.td}>
-                          {Cell(c.key, r)}
+                          {renderCell(c.key, r)}
                         </td>
                       ))}
                       <td style={{ ...styles.td, textAlign: "right", whiteSpace: "nowrap", fontSize: 12, color: "#6b7280" }}>
@@ -316,19 +319,26 @@ export default function App() {
   );
 }
 
-function Select({ label, value, onChange, options, Option }) {
+function Select({ label, value, onChange, options, renderOption }) {
   const norm = (opt) => (typeof opt === 'string' ? { value: opt, label: opt } : opt);
   return (
     <label style={{ display: "flex", flexDirection: "column", fontSize: 14, gap: 4 }}>
       <span style={{ color: "#374151" }}>{label}</span>
       <select value={value} onChange={(e) => onChange(e.target.value)}
               style={{ border: "1px solid #d1d5db", borderRadius: 8, padding: "6px 8px", fontSize: 14 }}>
-        {options.map((opt) => { const o = norm(opt);
-          return <option key={o.value} value={o.value}>{Option ? Option(o) : o.label}</option>; })}
+        {options.map((opt) => {
+          const o = norm(opt);
+          return (
+            <option key={o.value} value={o.value}>
+              {renderOption ? renderOption(o) : o.label}
+            </option>
+          );
+        })}
       </select>
     </label>
   );
 }
+
 
 function renderCell(key, row) {
   const v = row[key];
