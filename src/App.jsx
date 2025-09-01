@@ -458,14 +458,21 @@ const styles = {
   },
 
   // Controls：兩欄（固定半寬）
-  controls: {
+ controls: {
   display: "grid",
-  gridTemplateColumns: "repeat(2, auto)", // 兩欄依內容寬度
+  gridTemplateColumns: "max-content max-content", // ← 關鍵：兩欄寬度=內容寬
   columnGap: 12,
   rowGap: 8,
   alignItems: "start",
+  justifyContent: "start",   // 整組靠左
+  justifyItems: "start",      // item 不拉伸
 },
-  controlCol: { display: "grid", gridTemplateRows: "auto auto", gap: 8 },
+  controlCol: {
+  display: "grid",
+  gridTemplateRows: "auto auto",
+  gap: 8,
+  width: "max-content",       // ← 不撐滿
+},
 
   /* 內容區：表格獨立水平捲動 */
   main: { maxWidth: 1120, margin: "0 auto", padding: 16 },
