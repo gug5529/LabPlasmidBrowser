@@ -243,7 +243,7 @@ export default function App() {
             value={sortKey + ":" + sortDir}
             onChange={(v) => { const [k, d] = String(v).split(":"); setSortKey(k); setSortDir(d || "asc"); }}
             options={columns.flatMap((c) => [c.key + ":asc", c.key + ":desc"])}
-            renderOption={(opt) => {
+            Option={(opt) => {
               const v = (typeof opt === 'string' ? opt : opt.value);
               const [k, d] = String(v).split(":");
               const col = columns.find((c) => c.key === k);
@@ -282,7 +282,7 @@ export default function App() {
                     <tr key={i} style={{ background: i % 2 ? "#ffffff" : "#fafafa" }}>
                       {columns.map((c) => (
                         <td key={c.key} style={styles.td}>
-                          {renderCell(c.key, r)}
+                          {Cell(c.key, r)}
                         </td>
                       ))}
                       <td style={{ ...styles.td, textAlign: "right", whiteSpace: "nowrap", fontSize: 12, color: "#6b7280" }}>
@@ -316,7 +316,7 @@ export default function App() {
   );
 }
 
-function Select({ label, value, onChange, options, renderOption }) {
+function Select({ label, value, onChange, options, Option }) {
   const norm = (opt) => (typeof opt === 'string' ? { value: opt, label: opt } : opt);
   return (
     <label style={{ display: "flex", flexDirection: "column", fontSize: 14, gap: 4 }}>
@@ -324,7 +324,7 @@ function Select({ label, value, onChange, options, renderOption }) {
       <select value={value} onChange={(e) => onChange(e.target.value)}
               style={{ border: "1px solid #d1d5db", borderRadius: 8, padding: "6px 8px", fontSize: 14 }}>
         {options.map((opt) => { const o = norm(opt);
-          return <option key={o.value} value={o.value}>{renderOption ? renderOption(o) : o.label}</option>; })}
+          return <option key={o.value} value={o.value}>{Option ? Option(o) : o.label}</option>; })}
       </select>
     </label>
   );
@@ -332,15 +332,33 @@ function Select({ label, value, onChange, options, renderOption }) {
 
 function renderCell(key, row) {
   const v = row[key];
+
   if (key === "Descriptions") {
-    return <span style={{ display: "block", maxWidth: 520, overflow: "hidden", textOverflow: "ellipsis" }}>{String(v || "")}</span>;
+    return (
+      <span style={{ display: "block", maxWidth: 520, overflow: "hidden", textOverflow: "ellipsis" }}>
+        {String(v || "")}
+      </span>
+    );
   }
+
   if (key === "Benchling") {
     const url = typeof v === "string" ? v : v && v.url;
-    const text = typeof v === "string" ? shortUrl(v) : v && (v.text || shortUrl(v.url || ""));
-    if (!url) return null;
-    return <a href={url} target="_blank" rel="noreferrer" style={{ color: "#166534", textDecoration: "underline", wordBreak: "break-all" }}>{text}</a>;
+    if (!url) {
+      return <span style={styles.noData}>no data</span>;
+    }
+    return (
+      <a
+        href={url}
+        target="_blank"
+        rel="noreferrer"
+        aria-label="Open Benchling link"
+        style={styles.linkBtn}
+      >
+        link here
+      </a>
+    );
   }
+
   return <span>{String(v || "")}</span>;
 }
 
@@ -364,6 +382,23 @@ const styles = {
     position: "sticky", top: 0, zIndex: 10, background: "rgba(255,255,255,0.9)",
     borderBottom: "1px solid #e5e7eb", padding: "10px 16px", display: "flex",
     gap: 12, alignItems: "center", justifyContent: "space-between", backdropFilter: "saturate(180%) blur(6px)",
+  },
+   linkBtn: {
+    display: "inline-block",
+    border: "1px solid #e5e7eb",
+    padding: "4px 8px",
+    borderRadius: 8,
+    textDecoration: "none",
+    fontSize: 12,
+    lineHeight: "16px",
+    color: "#166534",
+    background: "#f0fdf4",
+    whiteSpace: "nowrap",
+  },
+  noData: {
+    color: "#9ca3af",
+    fontStyle: "italic",
+    fontSize: 12,
   },
   headerLeft: { display: "flex", alignItems: "center", gap: 10 },
   logo: { width: 36, height: 36, borderRadius: 10, background: "#16a34a", color: "white",
