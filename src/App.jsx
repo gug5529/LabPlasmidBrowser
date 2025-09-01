@@ -71,9 +71,7 @@ export default function App() {
           if (!resp?.credential) return;
           setIdToken(resp.credential);
           window.__IDTOKEN__ = resp.credential;
-          try {
-            setAuthEmail(JSON.parse(atob(resp.credential.split(".")[1]))?.email || "");
-          } catch {}
+          try { setAuthEmail(JSON.parse(atob(resp.credential.split(".")[1]))?.email || ""); } catch {}
         },
       });
 
@@ -97,8 +95,7 @@ export default function App() {
         setLoading(true);
 
         const base = CONFIG.DATA_URL;
-        const url =
-          base + (base.includes("?") ? "&" : "?") + "idToken=" + encodeURIComponent(idToken);
+        const url = base + (base.includes("?") ? "&" : "?") + "idToken=" + encodeURIComponent(idToken);
 
         let json;
         try {
@@ -129,9 +126,7 @@ export default function App() {
       }
     })();
 
-    return () => {
-      alive = false;
-    };
+    return () => { alive = false; };
   }, [idToken]);
 
   useEffect(() => {
@@ -139,7 +134,6 @@ export default function App() {
     setPage(1);
   }, [member, group]);
 
-  /** Member 選項（顯示「10 · YiFeng」） */
   const memberOptions = useMemo(() => {
     const arr = data.members.map((m) => ({
       value: m.memberId || m.name,
@@ -149,23 +143,19 @@ export default function App() {
     return ["all", ...arr];
   }, [data.members]);
 
-  /** Group 選項：只有 all / Other（沒 Other 就只顯示 all） */
   const groupOptions = useMemo(() => {
     const hasOther = (data.rows || []).some((r) => r.wsIsOther);
     return hasOther ? ["all", "Other"] : ["all"];
   }, [data.rows]);
 
-  /** Worksheet 選項：依 member + group 篩後蒐集 */
   const worksheetOptions = useMemo(() => {
     let pool = data.rows;
-    if (member !== "all")
-      pool = pool.filter((r) => r.memberId === member || r.memberName === member);
+    if (member !== "all") pool = pool.filter((r) => r.memberId === member || r.memberName === member);
     if (group === "Other") pool = pool.filter((r) => r.wsIsOther === true);
     const set = new Set(pool.map((r) => r.worksheet).filter(Boolean));
     return ["all", ...Array.from(set).sort(naturalCompare)];
   }, [member, group, data.rows]);
 
-  /** 篩選 + 排序 + 搜尋 */
   const filtered = useMemo(() => {
     const needles = q.toLowerCase().split(/\s+/).filter(Boolean);
     const xs = data.rows.filter((r) => {
@@ -175,25 +165,15 @@ export default function App() {
 
       if (needles.length === 0) return true;
 
-      const bench =
-        typeof r.Benchling === "string"
-          ? r.Benchling
-          : (r.Benchling && (r.Benchling.url || r.Benchling.text)) || "";
+      const bench = typeof r.Benchling === "string"
+        ? r.Benchling
+        : (r.Benchling && (r.Benchling.url || r.Benchling.text)) || "";
 
       const hay = [
-        r.Plasmid_Name,
-        r.Plasmid_Information,
-        r.Antibiotics,
-        r.Descriptions,
-        r["Box_(Location)"],
-        bench,
-        r.memberId,
-        r.memberName,
-        r.worksheet,
-      ]
-        .filter(Boolean)
-        .join(" ")
-        .toLowerCase();
+        r.Plasmid_Name, r.Plasmid_Information, r.Antibiotics,
+        r.Descriptions, r["Box_(Location)"], bench,
+        r.memberId, r.memberName, r.worksheet
+      ].filter(Boolean).join(" ").toLowerCase();
 
       return needles.every((n) => hay.includes(n));
     });
@@ -215,83 +195,68 @@ export default function App() {
 
   function changeSort(key) {
     if (sortKey === key) setSortDir(sortDir === "asc" ? "desc" : "asc");
-    else {
-      setSortKey(key);
-      setSortDir("asc");
-    }
+    else { setSortKey(key); setSortDir("asc"); }
   }
 
   return (
     <div style={styles.page}>
-      {/* Header：logo + (title / search / updated)，右側登入狀態 */}
-      <header style={styles.header}>
-        <div style={styles.headerLeft}>
-          <div style={styles.logo} aria-hidden="true" />
-          <div>
-            <div style={styles.title}>Plasmid Browser</div>
-            <div style={{ marginTop: 6 }}>
-              <input
-                value={q}
-                onChange={(e) => {
-                  setQ(e.target.value);
-                  setPage(1);
+      {/* 置頂區：Header + 搜尋 + 登入 + 四個選單 */}
+      <div style={styles.stickyTop}>
+        <div style={styles.stickyInner}>
+          <div style={styles.header}>
+            <div style={styles.headerLeft}>
+              <div style={styles.logo}>PB</div>
+              <div>
+                <div style={styles.title}>Plasmid Browser</div>
+                <div style={{ marginTop: 6 }}>
+                  <input
+                    value={q}
+                    onChange={(e) => { setQ(e.target.value); setPage(1); }}
+                    placeholder="keyword search"
+                    style={styles.search}
+                  />
+                </div>
+                {data.updatedAt ? (
+                  <div style={styles.subtitle}>Updated: {new Date(data.updatedAt).toLocaleString()}</div>
+                ) : null}
+              </div>
+            </div>
+            <div style={styles.signedIn}>
+              {authEmail ? `Signed in: ${authEmail}` : <div id="signin-btn" />}
+            </div>
+          </div>
+
+          {/* Controls：固定寬度兩欄（手機也固定兩欄） */}
+          <div className="controls" style={styles.controls}>
+            <div style={styles.controlCol}>
+              <Select label="Member" value={member} onChange={setMember} options={memberOptions} />
+              <Select label="Worksheet" value={worksheet} onChange={setWorksheet} options={worksheetOptions} />
+            </div>
+            <div style={styles.controlCol}>
+              <Select label="Group" value={group} onChange={setGroup} options={groupOptions} />
+              <Select
+                label="Sort"
+                value={sortKey + ":" + sortDir}
+                onChange={(v) => { const [k, d] = String(v).split(":"); setSortKey(k); setSortDir(d || "asc"); }}
+                options={columns.flatMap((c) => [c.key + ":asc", c.key + ":desc"])}
+                renderOption={(opt) => {
+                  const v = (typeof opt === "string" ? opt : opt.value);
+                  const [k, d] = String(v).split(":");
+                  const col = columns.find((c) => c.key === k);
+                  return (col ? col.label : k) + " (" + (d || "asc") + ")";
                 }}
-                placeholder="keyword search"
-                style={styles.search}
               />
             </div>
-            {data.updatedAt ? (
-              <div style={styles.subtitle}>
-                Updated: {new Date(data.updatedAt).toLocaleString()}
-              </div>
-            ) : null}
           </div>
         </div>
-        <div style={styles.signedIn}>
-          {authEmail ? `Signed in: ${authEmail}` : <div id="signin-btn" />}
-        </div>
-      </header>
+      </div>
 
       {!idToken ? (
-        <div style={{ padding: 16 }}>
-          請先使用 Google 帳號登入（Workspace 或白名單 Gmail）。
-        </div>
+        <div style={{ padding: 16 }}>請先使用 Google 帳號登入（Workspace 或白名單 Gmail）。</div>
       ) : null}
 
+      {/* 表格保持原本寬度與水平卷軸 */}
       <main style={styles.main}>
-        {/* Controls：兩欄（手機自動 1 欄） */}
-        <div className="controls" style={styles.controls}>
-          <div style={styles.controlCol}>
-            <Select label="Member" value={member} onChange={setMember} options={memberOptions} />
-            <Select
-              label="Worksheet"
-              value={worksheet}
-              onChange={setWorksheet}
-              options={worksheetOptions}
-            />
-          </div>
-          <div style={styles.controlCol}>
-            <Select label="Group" value={group} onChange={setGroup} options={groupOptions} />
-            <Select
-              label="Sort"
-              value={sortKey + ":" + sortDir}
-              onChange={(v) => {
-                const [k, d] = String(v).split(":");
-                setSortKey(k);
-                setSortDir(d || "asc");
-              }}
-              options={columns.flatMap((c) => [c.key + ":asc", c.key + ":desc"])}
-              renderOption={(opt) => {
-                const v = typeof opt === "string" ? opt : opt.value;
-                const [k, d] = String(v).split(":");
-                const col = columns.find((c) => c.key === k);
-                return (col ? col.label : k) + " (" + (d || "asc") + ")";
-              }}
-            />
-          </div>
-        </div>
-
-        {/* Table */}
         <div style={styles.card}>
           <div style={styles.cardTop}>
             <span style={{ color: "#4b5563", fontSize: 14 }}>
@@ -305,14 +270,8 @@ export default function App() {
               <thead style={{ background: "#f3f4f6" }}>
                 <tr>
                   {columns.map((c) => (
-                    <th
-                      key={c.key}
-                      style={styles.th}
-                      onClick={() => changeSort(c.key)}
-                      title="Click to sort"
-                    >
-                      {c.label}
-                      {sortKey === c.key ? (sortDir === "asc" ? " ▲" : " ▼") : ""}
+                    <th key={c.key} style={styles.th} onClick={() => changeSort(c.key)} title="Click to sort">
+                      {c.label}{sortKey === c.key ? (sortDir === "asc" ? " ▲" : " ▼") : ""}
                     </th>
                   ))}
                   <th style={{ ...styles.th, textAlign: "right" }}>Member / Sheet</th>
@@ -321,9 +280,7 @@ export default function App() {
               <tbody>
                 {pageRows.length === 0 && !loading ? (
                   <tr>
-                    <td colSpan={columns.length + 1} style={styles.empty}>
-                      No matches. Try a different keyword or filter.
-                    </td>
+                    <td colSpan={columns.length + 1} style={styles.empty}>No matches. Try a different keyword or filter.</td>
                   </tr>
                 ) : (
                   pageRows.map((r, i) => (
@@ -333,15 +290,7 @@ export default function App() {
                           {renderCell(c.key, r)}
                         </td>
                       ))}
-                      <td
-                        style={{
-                          ...styles.td,
-                          textAlign: "right",
-                          whiteSpace: "nowrap",
-                          fontSize: 12,
-                          color: "#6b7280",
-                        }}
-                      >
+                      <td style={{ ...styles.td, textAlign: "right", whiteSpace: "nowrap", fontSize: 12, color: "#6b7280" }}>
                         {(r.memberId || r.memberName) + " · " + (r.worksheet || "")}
                       </td>
                     </tr>
@@ -351,42 +300,15 @@ export default function App() {
             </table>
           </div>
 
-          {/* Pagination */}
           <div style={styles.cardBottom}>
             <div>
-              Page {page} / {pageCount}{" "}
-              {total > 0
-                ? " · Showing " +
-                  (start + 1) +
-                  "–" +
-                  Math.min(total, start + CONFIG.PAGE_SIZE)
-                : ""}
+              Page {page} / {pageCount} {total > 0 ? " · Showing " + (start + 1) + "–" + Math.min(total, start + CONFIG.PAGE_SIZE) : ""}
             </div>
             <div style={{ display: "flex", gap: 6 }}>
-              <button style={styles.btn} disabled={page <= 1} onClick={() => setPage(1)}>
-                First
-              </button>
-              <button
-                style={styles.btn}
-                disabled={page <= 1}
-                onClick={() => setPage(Math.max(1, page - 1))}
-              >
-                Prev
-              </button>
-              <button
-                style={styles.btn}
-                disabled={page >= pageCount}
-                onClick={() => setPage(Math.min(pageCount, page + 1))}
-              >
-                Next
-              </button>
-              <button
-                style={styles.btn}
-                disabled={page >= pageCount}
-                onClick={() => setPage(pageCount)}
-              >
-                Last
-              </button>
+              <button style={styles.btn} disabled={page <= 1} onClick={() => setPage(1)}>First</button>
+              <button style={styles.btn} disabled={page <= 1} onClick={() => setPage(Math.max(1, page - 1))}>Prev</button>
+              <button style={styles.btn} disabled={page >= pageCount} onClick={() => setPage(Math.min(pageCount, page + 1))}>Next</button>
+              <button style={styles.btn} disabled={page >= pageCount} onClick={() => setPage(pageCount)}>Last</button>
             </div>
           </div>
         </div>
@@ -399,7 +321,7 @@ export default function App() {
   );
 }
 
-/** Select（支援字串或 {value,label}） */
+/** Select */
 function Select({ label, value, onChange, options, renderOption }) {
   const norm = (opt) => (typeof opt === "string" ? { value: opt, label: opt } : opt);
   return (
@@ -408,7 +330,18 @@ function Select({ label, value, onChange, options, renderOption }) {
       <select
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        style={{ border: "1px solid #d1d5db", borderRadius: 8, padding: "6px 8px", fontSize: 14 }}
+        style={{
+          border: "1px solid #d1d5db",
+          borderRadius: 8,
+          padding: "6px 8px",
+          fontSize: 14,
+          background: "#fff",         // 白底
+          color: "#111827",           // 黑字
+          appearance: "auto",
+          WebkitAppearance: "menulist",
+          MozAppearance: "menulist",
+          width: "100%",
+        }}
       >
         {options.map((opt) => {
           const o = norm(opt);
@@ -437,9 +370,7 @@ function renderCell(key, row) {
 
   if (key === "Benchling") {
     const url = typeof v === "string" ? v : v && v.url;
-    if (!url) {
-      return <span style={styles.noData}>no data</span>;
-    }
+    if (!url) return <span style={styles.noData}>no data</span>;
     return (
       <a href={url} target="_blank" rel="noreferrer" aria-label="Open Benchling link" style={styles.linkBtn}>
         link here
@@ -451,14 +382,6 @@ function renderCell(key, row) {
 }
 
 /** helpers */
-function shortUrl(u) {
-  try {
-    const x = new URL(String(u || ""));
-    return x.hostname.replace(/^www\./, "") + x.pathname.replace(/\/$/, "");
-  } catch {
-    return String(u || "");
-  }
-}
 function normalizeBenchling(b) {
   if (!b) return null;
   if (typeof b === "string") return b;
@@ -473,53 +396,64 @@ function naturalCompare(a, b) {
 const styles = {
   page: { minHeight: "100vh", background: "#f9fafb", color: "#111827" },
 
-  // Header：左 logo、右邊堆疊 title + search + updated
-  header: {
+  /* 置頂容器（把 header + controls 鎖在頂部） */
+  stickyTop: {
     position: "sticky",
     top: 0,
-    zIndex: 10,
-    background: "rgba(255,255,255,0.95)",
+    zIndex: 20,
+    background: "rgba(255,255,255,0.98)",
+    backdropFilter: "saturate(180%) blur(6px)",
     borderBottom: "1px solid #e5e7eb",
-    padding: "10px 16px",
+  },
+  stickyInner: {
+    maxWidth: 1120,
+    margin: "0 auto",
+    padding: "10px 16px 12px",
+  },
+
+  /* Header （不再 sticky，交給 stickyTop 外層） */
+  header: {
     display: "flex",
     alignItems: "center",
     justifyContent: "space-between",
     gap: 12,
-    backdropFilter: "saturate(180%) blur(6px)",
+    marginBottom: 8,
   },
   headerLeft: { display: "flex", alignItems: "center", gap: 12 },
-  logo: { width: 48, height: 48, borderRadius: 6, background: "#16a34a", border: "3px solid #0f5132" },
+  logo: {
+    width: 48, height: 48, borderRadius: 8,
+    background: "#16a34a", color: "white", fontWeight: 800,
+    display: "flex", alignItems: "center", justifyContent: "center",
+    letterSpacing: 1,
+  },
   title: { fontSize: 18, fontWeight: 700 },
   subtitle: { marginTop: 6, fontSize: 12, color: "#6b7280" },
   signedIn: { fontSize: 12, color: "#6b7280", display: "flex", alignItems: "center" },
 
-  // 搜尋框（header 內）
+  // 搜尋框：白底黑字
   search: {
     width: "min(64vw, 420px)",
     border: "2px solid #111827",
     borderRadius: 8,
     padding: "8px 10px",
     fontSize: 14,
-    background: "#e5e7eb",
+    background: "#ffffff",
+    color: "#111827",
+    outline: "none",
   },
 
- controls: {
+  // Controls：兩欄（固定半寬）
+  controls: {
     display: "grid",
-    gridTemplateColumns: "repeat(2, minmax(0, 1fr))", // ← 兩欄（每欄 1/2 寬）
+    gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
     gap: 8,
-    marginBottom: 12,
   },
   controlCol: { display: "grid", gridTemplateRows: "auto auto", gap: 8 },
 
+  /* 內容區：表格獨立水平捲動 */
   main: { maxWidth: 1120, margin: "0 auto", padding: 16 },
 
-  card: {
-    background: "white",
-    border: "1px solid #e5e7eb",
-    borderRadius: 16,
-    overflow: "hidden",
-    boxShadow: "0 1px 2px rgba(0,0,0,0.04)",
-  },
+  card: { background: "white", border: "1px solid #e5e7eb", borderRadius: 16, overflow: "hidden", boxShadow: "0 1px 2px rgba(0,0,0,0.04)" },
   cardTop: { display: "flex", justifyContent: "space-between", padding: "8px 12px", borderBottom: "1px solid #e5e7eb" },
   table: { width: "100%", borderCollapse: "collapse", fontSize: 14 },
   th: { textAlign: "left", padding: "10px 12px", whiteSpace: "nowrap", cursor: "pointer" },
@@ -528,7 +462,7 @@ const styles = {
   cardBottom: { display: "flex", justifyContent: "space-between", padding: "8px 12px", borderTop: "1px solid #e5e7eb", fontSize: 14 },
   btn: { border: "1px solid #e5e7eb", background: "white", padding: "6px 10px", borderRadius: 8, cursor: "pointer" },
 
-  // Benchling 欄的按鈕與空值
+  // Benchling 欄
   linkBtn: {
     display: "inline-block",
     border: "1px solid #e5e7eb",
@@ -543,15 +477,3 @@ const styles = {
   },
   noData: { color: "#9ca3af", fontStyle: "italic", fontSize: 12 },
 };
-
-// RWD：>=640px 時把 controls 變成兩欄
-if (typeof document !== "undefined") {
-  const css = `
-    @media (min-width: 640px) {
-      .controls { grid-template-columns: 1fr 1fr !important; }
-    }
-  `;
-  const tag = document.createElement("style");
-  tag.textContent = css;
-  document.head.appendChild(tag);
-}
