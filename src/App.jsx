@@ -503,8 +503,12 @@ const styles = {
     background: "#e5e7eb",
   },
 
-  // Controls：兩欄（手機 1 欄）
-  controls: { display: "grid", gridTemplateColumns: "1fr", gap: 8, marginBottom: 12 },
+ controls: {
+    display: "grid",
+    gridTemplateColumns: "repeat(2, minmax(0, 1fr))", // ← 兩欄（每欄 1/2 寬）
+    gap: 8,
+    marginBottom: 12,
+  },
   controlCol: { display: "grid", gridTemplateRows: "auto auto", gap: 8 },
 
   main: { maxWidth: 1120, margin: "0 auto", padding: 16 },
