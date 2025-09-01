@@ -1,16 +1,11 @@
-// src/App.jsx
 import { useEffect, useMemo, useState } from "react";
 
-/** ====== 環境變數 ====== */
 const CONFIG = {
-  DATA_URL: import.meta.env.VITE_DATA_URL,        // Apps Script 的 exec URL（或 echo，會自動 JSONP 後援）
-  CLIENT_ID: import.meta.env.VITE_CLIENT_ID,      // OAuth Web client ID
+  DATA_URL: import.meta.env.VITE_DATA_URL,
+  CLIENT_ID: import.meta.env.VITE_CLIENT_ID,
   PAGE_SIZE: 50,
 };
 
-console.log("[env check]", CONFIG.DATA_URL, CONFIG.CLIENT_ID);
-
-/** ====== 欄位定義 ====== */
 const columns = [
   { key: "Plasmid_Name", label: "Plasmid" },
   { key: "Plasmid_Information", label: "Info" },
@@ -20,50 +15,50 @@ const columns = [
   { key: "Benchling", label: "Benchling" },
 ];
 
-/** JSONP 後援（遇到 googleusercontent 的 echo 端點時使用） */
+/** echo 端點的 JSONP 後援 */
 function fetchJSONP(url) {
   return new Promise((resolve, reject) => {
     const cb = "__jsonp_" + Math.random().toString(36).slice(2);
     const script = document.createElement("script");
-
-    window[cb] = (data) => {
-      try { resolve(data); }
-      finally {
-        delete window[cb];
-        script.remove();
-      }
-    };
-
+    window[cb] = (data) => { try { resolve(data); } finally { delete window[cb]; script.remove(); } };
     script.src = url + (url.includes("?") ? "&" : "?") + "callback=" + cb;
-    script.onerror = () => {
-      delete window[cb];
-      script.remove();
-      reject(new Error("JSONP load error"));
-    };
-
+    script.onerror = () => { delete window[cb]; script.remove(); reject(new Error("JSONP load error")); };
     document.body.appendChild(script);
   });
 }
 
+/** 是否為 all_plasmids（大小寫/底線/空白/符號不敏感） */
+function isAllPlasmids(name) {
+  const s = String(name || "").toLowerCase().replace(/\u00A0/g, ' ').replace(/[^a-z0-9]+/g, '');
+  return s === 'allplasmids' || s === 'allplasmid';
+}
+
+/** 是否屬於 Level 0/1/2（用於判斷 Other） */
+function isLevel012(name) {
+  const raw = String(name || "").toLowerCase();
+  return (
+    /(^|[^a-z])(l|lvl|lv|level)[ _-]*0([^a-z]|$)/.test(raw) ||
+    /(^|[^a-z])(l|lvl|lv|level)[ _-]*1([^a-z]|$)/.test(raw) ||
+    /(^|[^a-z])(l|lvl|lv|level)[ _-]*2([^a-z]|$)/.test(raw)
+  );
+}
+
 export default function App() {
-  // 資料/狀態
   const [data, setData] = useState({ members: [], rows: [], updatedAt: null });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
-  // 登入相關
   const [idToken, setIdToken] = useState(null);
   const [authEmail, setAuthEmail] = useState("");
 
-  // UI 狀態
   const [q, setQ] = useState("");
   const [member, setMember] = useState("all");
+  const [group, setGroup] = useState("all");   // 只有 all / Other
   const [worksheet, setWorksheet] = useState("all");
   const [sortKey, setSortKey] = useState("Plasmid_Name");
   const [sortDir, setSortDir] = useState("asc");
   const [page, setPage] = useState(1);
 
-  /** ====== 初始化 Google Identity，取得 idToken ====== */
   useEffect(() => {
     function init() {
       /* global google */
@@ -75,15 +70,10 @@ export default function App() {
           if (!resp?.credential) return;
           setIdToken(resp.credential);
           window.__IDTOKEN__ = resp.credential;
-          console.log("[GIS] got idToken:", !!resp.credential);
-          try {
-            const payload = JSON.parse(atob(resp.credential.split(".")[1]));
-            setAuthEmail(payload?.email || "");
-          } catch {}
+          try { setAuthEmail(JSON.parse(atob(resp.credential.split(".")[1]))?.email || ""); } catch {}
         },
       });
 
-      // One Tap；若被擋，會在備用按鈕渲染
       google.accounts.id.prompt();
       const el = document.getElementById("signin-btn");
       if (el) google.accounts.id.renderButton(el, { theme: "outline", size: "large" });
@@ -94,43 +84,39 @@ export default function App() {
     return () => window.removeEventListener("load", init);
   }, []);
 
-  /** ====== 取得資料：等拿到 idToken 再抓，並在 URL 帶上 ?idToken= ====== */
   useEffect(() => {
-    if (!idToken) return; // 還沒登入完成，先不要發請求
+    if (!idToken) return;
 
     let alive = true;
     (async () => {
       try {
         setLoading(true);
-
         const base = CONFIG.DATA_URL;
-        const url =
-          base +
-          (base.includes("?") ? "&" : "?") +
-          "idToken=" +
-          encodeURIComponent(idToken); // 帶上 token
+        const url = base + (base.includes("?") ? "&" : "?") + "idToken=" + encodeURIComponent(idToken);
 
         let json;
         try {
-          // 先試標準 fetch（exec URL 會成功）
           const res = await fetch(url, { cache: "no-store" });
           if (!res.ok) throw new Error("HTTP " + res.status);
           json = await res.json();
         } catch (err) {
-          // 若是 echo 端點（無 CORS）→ 用 JSONP 後援
           if (String(base).includes("script.googleusercontent.com/macros/echo")) {
             json = await fetchJSONP(url);
           } else {
             throw err;
           }
         }
-
         if (json.error) throw new Error(json.error + (json.reason ? ": " + json.reason : ""));
 
-        const rows = (json.rows || []).map((r) => ({
-          ...r,
-          Benchling: normalizeBenchling(r.Benchling),
-        }));
+        // 前端再次保險：忽略 all_plasmids，並標記是否為 Other
+        const rows = (json.rows || [])
+          .filter(r => !isAllPlasmids(r.worksheet))
+          .map(r => ({
+            ...r,
+            wsIsOther: !isLevel012(r.worksheet), // true => 這個工作表屬於 Other
+            Benchling: normalizeBenchling(r.Benchling),
+          }));
+
         if (!alive) return;
         setData({ members: json.members || [], rows, updatedAt: json.updatedAt || null });
         setError("");
@@ -141,18 +127,14 @@ export default function App() {
       }
     })();
 
-    return () => {
-      alive = false;
-    };
+    return () => { alive = false; };
   }, [idToken]);
 
-  // 切換 member 時重置 worksheet 與頁碼
   useEffect(() => {
     setWorksheet("all");
     setPage(1);
-  }, [member]);
+  }, [member, group]);
 
-  /** ====== Member 選項（顯示 "10 · YiFeng"） ====== */
   const memberOptions = useMemo(() => {
     const arr = data.members.map((m) => ({
       value: m.memberId || m.name,
@@ -162,24 +144,28 @@ export default function App() {
     return ["all", ...arr];
   }, [data.members]);
 
-  /** ====== Worksheet 選項（列出所有 tab；選了 member 就列該 member 的 tabs） ====== */
-  const worksheetOptions = useMemo(() => {
-    if (member === "all") {
-      const set = new Set();
-      data.members.forEach((m) => (m.worksheets || []).forEach((ws) => set.add(ws)));
-      return ["all", ...Array.from(set).sort(naturalCompare)];
-    }
-    const m = data.members.find((x) => x.memberId === member || x.name === member);
-    const ws = (m && m.worksheets) || [];
-    return ["all", ...ws.slice().sort(naturalCompare)];
-  }, [member, data.members]);
+  // Group 只有 all / Other（如果沒有 Other 資料，就只顯示 all）
+  const groupOptions = useMemo(() => {
+    const hasOther = (data.rows || []).some(r => r.wsIsOther);
+    return hasOther ? ["all", "Other"] : ["all"];
+  }, [data.rows]);
 
-  /** ====== 篩選 + 多關鍵字(AND) 搜尋 + 排序 ====== */
+  // Worksheet 選項：依 member + group 篩選後再蒐集
+  const worksheetOptions = useMemo(() => {
+    let pool = data.rows;
+    if (member !== "all") pool = pool.filter((r) => r.memberId === member || r.memberName === member);
+    if (group === "Other") pool = pool.filter((r) => r.wsIsOther === true);
+    const set = new Set(pool.map((r) => r.worksheet).filter(Boolean));
+    return ["all", ...Array.from(set).sort(naturalCompare)];
+  }, [member, group, data.rows]);
+
   const filtered = useMemo(() => {
     const needles = q.toLowerCase().split(/\s+/).filter(Boolean);
     const xs = data.rows.filter((r) => {
       if (member !== "all" && !(r.memberId === member || r.memberName === member)) return false;
+      if (group === "Other" && !r.wsIsOther) return false;
       if (worksheet !== "all" && r.worksheet !== worksheet) return false;
+
       if (needles.length === 0) return true;
 
       const bench = typeof r.Benchling === "string"
@@ -189,9 +175,10 @@ export default function App() {
       const hay = [
         r.Plasmid_Name, r.Plasmid_Information, r.Antibiotics,
         r.Descriptions, r["Box_(Location)"], bench,
+        r.memberId, r.memberName, r.worksheet
       ].filter(Boolean).join(" ").toLowerCase();
 
-      return needles.every((n) => hay.includes(n)); // AND
+      return needles.every((n) => hay.includes(n));
     });
 
     xs.sort((a, b) => {
@@ -202,9 +189,8 @@ export default function App() {
       return 0;
     });
     return xs;
-  }, [q, data.rows, member, worksheet, sortKey, sortDir]);
+  }, [q, data.rows, member, group, worksheet, sortKey, sortDir]);
 
-  // 分頁
   const total = filtered.length;
   const pageCount = Math.max(1, Math.ceil(total / CONFIG.PAGE_SIZE));
   const start = (page - 1) * CONFIG.PAGE_SIZE;
@@ -248,28 +234,14 @@ export default function App() {
       ) : null}
 
       <main style={styles.main}>
-        {/* Filters */}
         <div className="filters" style={styles.filters}>
-          <Select
-            label="Member"
-            value={member}
-            onChange={setMember}
-            options={memberOptions}
-          />
-          <Select
-            label="Worksheet"
-            value={worksheet}
-            onChange={setWorksheet}
-            options={worksheetOptions}
-          />
+          <Select label="Member" value={member} onChange={setMember} options={memberOptions} />
+          <Select label="Group"  value={group}  onChange={setGroup}  options={groupOptions} />
+          <Select label="Worksheet" value={worksheet} onChange={setWorksheet} options={worksheetOptions} />
           <Select
             label="Sort"
             value={sortKey + ":" + sortDir}
-            onChange={(v) => {
-              const [k, d] = String(v).split(":");
-              setSortKey(k);
-              setSortDir(d || "asc");
-            }}
+            onChange={(v) => { const [k, d] = String(v).split(":"); setSortKey(k); setSortDir(d || "asc"); }}
             options={columns.flatMap((c) => [c.key + ":asc", c.key + ":desc"])}
             renderOption={(opt) => {
               const v = (typeof opt === 'string' ? opt : opt.value);
@@ -280,7 +252,6 @@ export default function App() {
           />
         </div>
 
-        {/* Table */}
         <div style={styles.card}>
           <div style={styles.cardTop}>
             <span style={{ color: "#4b5563", fontSize: 14 }}>
@@ -294,12 +265,7 @@ export default function App() {
               <thead style={{ background: "#f3f4f6" }}>
                 <tr>
                   {columns.map((c) => (
-                    <th
-                      key={c.key}
-                      style={styles.th}
-                      onClick={() => changeSort(c.key)}
-                      title="Click to sort"
-                    >
+                    <th key={c.key} style={styles.th} onClick={() => changeSort(c.key)} title="Click to sort">
                       {c.label}{sortKey === c.key ? (sortDir === "asc" ? " ▲" : " ▼") : ""}
                     </th>
                   ))}
@@ -309,9 +275,7 @@ export default function App() {
               <tbody>
                 {pageRows.length === 0 && !loading ? (
                   <tr>
-                    <td colSpan={columns.length + 1} style={styles.empty}>
-                      No matches. Try a different keyword or filter.
-                    </td>
+                    <td colSpan={columns.length + 1} style={styles.empty}>No matches. Try a different keyword or filter.</td>
                   </tr>
                 ) : (
                   pageRows.map((r, i) => (
@@ -331,11 +295,9 @@ export default function App() {
             </table>
           </div>
 
-          {/* Pagination */}
           <div style={styles.cardBottom}>
             <div>
-              Page {page} / {pageCount}{" "}
-              {total > 0 ? " · Showing " + (start + 1) + "–" + Math.min(total, start + CONFIG.PAGE_SIZE) : ""}
+              Page {page} / {pageCount} {total > 0 ? " · Showing " + (start + 1) + "–" + Math.min(total, start + CONFIG.PAGE_SIZE) : ""}
             </div>
             <div style={{ display: "flex", gap: 6 }}>
               <button style={styles.btn} disabled={page <= 1} onClick={() => setPage(1)}>First</button>
@@ -347,38 +309,27 @@ export default function App() {
         </div>
 
         <p style={{ marginTop: 8, fontSize: 12, color: "#6b7280" }}>
-          Tip: On mobile, swipe the table left/right to see all columns. Tap a column header to sort.
+          Tip: 「Group → Other」會只顯示非 Level 0/1/2 的工作表；`all_plasmids` 已自動忽略，不會重覆。
         </p>
       </main>
     </div>
   );
 }
 
-/** ====== 小元件：Select（支援字串或 {value,label}） ====== */
 function Select({ label, value, onChange, options, renderOption }) {
   const norm = (opt) => (typeof opt === 'string' ? { value: opt, label: opt } : opt);
   return (
     <label style={{ display: "flex", flexDirection: "column", fontSize: 14, gap: 4 }}>
       <span style={{ color: "#374151" }}>{label}</span>
-      <select
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        style={{ border: "1px solid #d1d5db", borderRadius: 8, padding: "6px 8px", fontSize: 14 }}
-      >
-        {options.map((opt) => {
-          const o = norm(opt);
-          return (
-            <option key={o.value} value={o.value}>
-              {renderOption ? renderOption(o) : o.label}
-            </option>
-          );
-        })}
+      <select value={value} onChange={(e) => onChange(e.target.value)}
+              style={{ border: "1px solid #d1d5db", borderRadius: 8, padding: "6px 8px", fontSize: 14 }}>
+        {options.map((opt) => { const o = norm(opt);
+          return <option key={o.value} value={o.value}>{renderOption ? renderOption(o) : o.label}</option>; })}
       </select>
     </label>
   );
 }
 
-/** ====== helpers ====== */
 function renderCell(key, row) {
   const v = row[key];
   if (key === "Descriptions") {
@@ -388,20 +339,14 @@ function renderCell(key, row) {
     const url = typeof v === "string" ? v : v && v.url;
     const text = typeof v === "string" ? shortUrl(v) : v && (v.text || shortUrl(v.url || ""));
     if (!url) return null;
-    return (
-      <a href={url} target="_blank" rel="noreferrer" style={{ color: "#166534", textDecoration: "underline", wordBreak: "break-all" }}>
-        {text}
-      </a>
-    );
+    return <a href={url} target="_blank" rel="noreferrer" style={{ color: "#166534", textDecoration: "underline", wordBreak: "break-all" }}>{text}</a>;
   }
   return <span>{String(v || "")}</span>;
 }
 
 function shortUrl(u) {
-  try {
-    const x = new URL(String(u || ""));
-    return x.hostname.replace(/^www\./, "") + x.pathname.replace(/\/$/, "");
-  } catch { return String(u || ""); }
+  try { const x = new URL(String(u || "")); return x.hostname.replace(/^www\./, "") + x.pathname.replace(/\/$/, ""); }
+  catch { return String(u || ""); }
 }
 function normalizeBenchling(b) {
   if (!b) return null;
@@ -413,7 +358,6 @@ function naturalCompare(a, b) {
   return String(a).localeCompare(String(b), undefined, { numeric: true, sensitivity: "base" });
 }
 
-/** ====== inline styles ====== */
 const styles = {
   page: { minHeight: "100vh", background: "#f9fafb", color: "#111827" },
   header: {
@@ -441,10 +385,10 @@ const styles = {
   btn: { border: "1px solid #e5e7eb", background: "white", padding: "6px 10px", borderRadius: 8, cursor: "pointer" },
 };
 
-// 小螢幕排版（純 CSS）
 if (typeof document !== "undefined") {
-  const css = `@media (min-width: 640px) { .filters { grid-template-columns: repeat(3, 1fr) !important; } }`;
+  const css = `@media (min-width: 640px) { .filters { grid-template-columns: repeat(4, 1fr) !important; } }`;
   const tag = document.createElement("style");
   tag.textContent = css;
   document.head.appendChild(tag);
 }
+
