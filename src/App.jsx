@@ -325,7 +325,15 @@ export default function App() {
 function Select({ label, value, onChange, options, renderOption }) {
   const norm = (opt) => (typeof opt === "string" ? { value: opt, label: opt } : opt);
   return (
-    <label style={{ display: "flex", flexDirection: "column", fontSize: 14, gap: 4 }}>
+    <label
+  style={{
+    display: "flex",
+    flexDirection: "column",
+    fontSize: 14,
+    gap: 4,
+    width: "min(45vw, 180px)",   // 每個選單最寬 180px，最多 45vw
+  }}
+>
       <span style={{ color: "#374151" }}>{label}</span>
       <select
         value={value}
@@ -421,12 +429,19 @@ const styles = {
   },
   headerLeft: { display: "flex", alignItems: "center", gap: 12 },
   logo: {
-    width: 48, height: 48, borderRadius: 8,
-    background: "#16a34a", color: "white", fontWeight: 800,
-    display: "flex", alignItems: "center", justifyContent: "center",
-    letterSpacing: 1,
-  },
-  title: { fontSize: 18, fontWeight: 700 },
+  width: 48,
+  height: 48,
+  borderRadius: 8,
+  background: "#16a34a",
+  color: "white",
+  fontWeight: 800,
+  border: "3px solid #111827",   // 黑色外框
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  letterSpacing: 1,
+},
+  title: { fontSize: 22, fontWeight: 800, color: "#111827" },
   subtitle: { marginTop: 6, fontSize: 12, color: "#6b7280" },
   signedIn: { fontSize: 12, color: "#6b7280", display: "flex", alignItems: "center" },
 
@@ -444,10 +459,12 @@ const styles = {
 
   // Controls：兩欄（固定半寬）
   controls: {
-    display: "grid",
-    gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
-    gap: 8,
-  },
+  display: "grid",
+  gridTemplateColumns: "repeat(2, auto)", // 兩欄依內容寬度
+  columnGap: 12,
+  rowGap: 8,
+  alignItems: "start",
+},
   controlCol: { display: "grid", gridTemplateRows: "auto auto", gap: 8 },
 
   /* 內容區：表格獨立水平捲動 */
