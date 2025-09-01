@@ -3,12 +3,11 @@ import { useEffect, useMemo, useState } from "react";
 
 /** ====== 環境變數 ====== */
 const CONFIG = {
-  DATA_URL: import.meta.env.VITE_DATA_URL,        // googleusercontent 最終 URL
+  DATA_URL: import.meta.env.VITE_DATA_URL,        // Apps Script 的 exec URL（或 echo，會自動 JSONP 後援）
   CLIENT_ID: import.meta.env.VITE_CLIENT_ID,      // OAuth Web client ID
   PAGE_SIZE: 50,
 };
 
-// 除錯一下是否有讀到 .env（可留著）
 console.log("[env check]", CONFIG.DATA_URL, CONFIG.CLIENT_ID);
 
 /** ====== 欄位定義 ====== */
@@ -20,6 +19,31 @@ const columns = [
   { key: "Box_(Location)", label: "Box" },
   { key: "Benchling", label: "Benchling" },
 ];
+
+/** JSONP 後援（遇到 googleusercontent 的 echo 端點時使用） */
+function fetchJSONP(url) {
+  return new Promise((resolve, reject) => {
+    const cb = "__jsonp_" + Math.random().toString(36).slice(2);
+    const script = document.createElement("script");
+
+    window[cb] = (data) => {
+      try { resolve(data); }
+      finally {
+        delete window[cb];
+        script.remove();
+      }
+    };
+
+    script.src = url + (url.includes("?") ? "&" : "?") + "callback=" + cb;
+    script.onerror = () => {
+      delete window[cb];
+      script.remove();
+      reject(new Error("JSONP load error"));
+    };
+
+    document.body.appendChild(script);
+  });
+}
 
 export default function App() {
   // 資料/狀態
@@ -49,8 +73,8 @@ export default function App() {
         client_id: CONFIG.CLIENT_ID,
         callback: (resp) => {
           if (!resp?.credential) return;
-          setIdToken(resp.credential);                 // 存進 state
-          window.__IDTOKEN__ = resp.credential;        // 方便你在 Console 檢查
+          setIdToken(resp.credential);
+          window.__IDTOKEN__ = resp.credential;
           console.log("[GIS] got idToken:", !!resp.credential);
           try {
             const payload = JSON.parse(atob(resp.credential.split(".")[1]));
@@ -79,15 +103,28 @@ export default function App() {
       try {
         setLoading(true);
 
+        const base = CONFIG.DATA_URL;
         const url =
-          CONFIG.DATA_URL +
-          (CONFIG.DATA_URL.includes("?") ? "&" : "?") +
+          base +
+          (base.includes("?") ? "&" : "?") +
           "idToken=" +
-          encodeURIComponent(idToken); // ★ 關鍵：帶上 token
+          encodeURIComponent(idToken); // 帶上 token
 
-        const res = await fetch(url, { cache: "no-store" });
-        if (!res.ok) throw new Error("HTTP " + res.status);
-        const json = await res.json();
+        let json;
+        try {
+          // 先試標準 fetch（exec URL 會成功）
+          const res = await fetch(url, { cache: "no-store" });
+          if (!res.ok) throw new Error("HTTP " + res.status);
+          json = await res.json();
+        } catch (err) {
+          // 若是 echo 端點（無 CORS）→ 用 JSONP 後援
+          if (String(base).includes("script.googleusercontent.com/macros/echo")) {
+            json = await fetchJSONP(url);
+          } else {
+            throw err;
+          }
+        }
+
         if (json.error) throw new Error(json.error + (json.reason ? ": " + json.reason : ""));
 
         const rows = (json.rows || []).map((r) => ({
@@ -98,7 +135,7 @@ export default function App() {
         setData({ members: json.members || [], rows, updatedAt: json.updatedAt || null });
         setError("");
       } catch (e) {
-        if (alive) setError(String(e));
+        if (alive) setError(String(e?.message || e));
       } finally {
         if (alive) setLoading(false);
       }
@@ -109,22 +146,33 @@ export default function App() {
     };
   }, [idToken]);
 
-  // 切換 member 時重置 worksheet
+  // 切換 member 時重置 worksheet 與頁碼
   useEffect(() => {
     setWorksheet("all");
     setPage(1);
   }, [member]);
 
-  // Worksheet 選項
+  /** ====== Member 選項（顯示 "10 · YiFeng"） ====== */
+  const memberOptions = useMemo(() => {
+    const arr = data.members.map((m) => ({
+      value: m.memberId || m.name,
+      label: [m.memberId, m.name].filter(Boolean).join(" · "),
+    }));
+    arr.sort((a, b) => naturalCompare(a.label, b.label));
+    return ["all", ...arr];
+  }, [data.members]);
+
+  /** ====== Worksheet 選項（列出所有 tab；選了 member 就列該 member 的 tabs） ====== */
   const worksheetOptions = useMemo(() => {
     if (member === "all") {
-      const set = new Set(data.rows.map((r) => r.worksheet).filter(Boolean));
-      return ["all", ...Array.from(set).sort()];
+      const set = new Set();
+      data.members.forEach((m) => (m.worksheets || []).forEach((ws) => set.add(ws)));
+      return ["all", ...Array.from(set).sort(naturalCompare)];
     }
     const m = data.members.find((x) => x.memberId === member || x.name === member);
     const ws = (m && m.worksheets) || [];
-    return ["all", ...ws.slice().sort()];
-  }, [member, data.members, data.rows]);
+    return ["all", ...ws.slice().sort(naturalCompare)];
+  }, [member, data.members]);
 
   /** ====== 篩選 + 多關鍵字(AND) 搜尋 + 排序 ====== */
   const filtered = useMemo(() => {
@@ -206,7 +254,7 @@ export default function App() {
             label="Member"
             value={member}
             onChange={setMember}
-            options={["all", ...data.members.map((m) => m.memberId || m.name).sort(naturalCompare)]}
+            options={memberOptions}
           />
           <Select
             label="Worksheet"
@@ -224,7 +272,8 @@ export default function App() {
             }}
             options={columns.flatMap((c) => [c.key + ":asc", c.key + ":desc"])}
             renderOption={(opt) => {
-              const [k, d] = String(opt).split(":");
+              const v = (typeof opt === 'string' ? opt : opt.value);
+              const [k, d] = String(v).split(":");
               const col = columns.find((c) => c.key === k);
               return (col ? col.label : k) + " (" + (d || "asc") + ")";
             }}
@@ -305,8 +354,9 @@ export default function App() {
   );
 }
 
-/** ====== 小元件：Select ====== */
+/** ====== 小元件：Select（支援字串或 {value,label}） ====== */
 function Select({ label, value, onChange, options, renderOption }) {
+  const norm = (opt) => (typeof opt === 'string' ? { value: opt, label: opt } : opt);
   return (
     <label style={{ display: "flex", flexDirection: "column", fontSize: 14, gap: 4 }}>
       <span style={{ color: "#374151" }}>{label}</span>
@@ -315,11 +365,14 @@ function Select({ label, value, onChange, options, renderOption }) {
         onChange={(e) => onChange(e.target.value)}
         style={{ border: "1px solid #d1d5db", borderRadius: 8, padding: "6px 8px", fontSize: 14 }}
       >
-        {options.map((opt) => (
-          <option key={opt} value={opt}>
-            {renderOption ? renderOption(opt) : opt}
-          </option>
-        ))}
+        {options.map((opt) => {
+          const o = norm(opt);
+          return (
+            <option key={o.value} value={o.value}>
+              {renderOption ? renderOption(o) : o.label}
+            </option>
+          );
+        })}
       </select>
     </label>
   );
