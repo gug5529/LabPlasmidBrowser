@@ -29,8 +29,8 @@ function fetchJSONP(url) {
 
 /** 是否為 all_plasmids（大小寫/底線/空白/符號不敏感） */
 function isAllPlasmids(name) {
-  const s = String(name || "").toLowerCase().replace(/\u00A0/g, ' ').replace(/[^a-z0-9]+/g, '');
-  return s === 'allplasmids' || s === 'allplasmid';
+  const s = String(name || "").toLowerCase().replace(/\u00A0/g, " ").replace(/[^a-z0-9]+/g, "");
+  return s === "allplasmids" || s === "allplasmid";
 }
 
 /** 是否屬於 Level 0/1/2（用於判斷 Other） */
@@ -53,12 +53,13 @@ export default function App() {
 
   const [q, setQ] = useState("");
   const [member, setMember] = useState("all");
-  const [group, setGroup] = useState("all");   // 只有 all / Other
+  const [group, setGroup] = useState("all"); // 只有 all / Other
   const [worksheet, setWorksheet] = useState("all");
   const [sortKey, setSortKey] = useState("Plasmid_Name");
   const [sortDir, setSortDir] = useState("asc");
   const [page, setPage] = useState(1);
 
+  /** Google Identity 初始化 */
   useEffect(() => {
     function init() {
       /* global google */
@@ -70,7 +71,9 @@ export default function App() {
           if (!resp?.credential) return;
           setIdToken(resp.credential);
           window.__IDTOKEN__ = resp.credential;
-          try { setAuthEmail(JSON.parse(atob(resp.credential.split(".")[1]))?.email || ""); } catch {}
+          try {
+            setAuthEmail(JSON.parse(atob(resp.credential.split(".")[1]))?.email || "");
+          } catch {}
         },
       });
 
@@ -84,60 +87,59 @@ export default function App() {
     return () => window.removeEventListener("load", init);
   }, []);
 
-useEffect(() => {
-  if (!idToken) return;
+  /** 抓資料（fetch 失敗 → 自動 JSONP 後援） */
+  useEffect(() => {
+    if (!idToken) return;
 
-  let alive = true;
-  (async () => {
-    try {
-      setLoading(true);
-
-      const base = CONFIG.DATA_URL;
-      const url =
-        base + (base.includes("?") ? "&" : "?") +
-        "idToken=" + encodeURIComponent(idToken);
-
-      let json;
+    let alive = true;
+    (async () => {
       try {
-        // 先用標準 fetch
-        const res = await fetch(url, { cache: "no-store" });
-        if (!res.ok) throw new Error("HTTP " + res.status);
-        json = await res.json();
-      } catch (err) {
-        // 任何原因失敗都用 JSONP 後援
-        json = await fetchJSONP(url);
+        setLoading(true);
+
+        const base = CONFIG.DATA_URL;
+        const url =
+          base + (base.includes("?") ? "&" : "?") + "idToken=" + encodeURIComponent(idToken);
+
+        let json;
+        try {
+          const res = await fetch(url, { cache: "no-store" });
+          if (!res.ok) throw new Error("HTTP " + res.status);
+          json = await res.json();
+        } catch (err) {
+          json = await fetchJSONP(url);
+        }
+
+        if (json.error) throw new Error(json.error + (json.reason ? ": " + json.reason : ""));
+
+        const rows = (json.rows || [])
+          .filter((r) => !isAllPlasmids(r.worksheet))
+          .map((r) => ({
+            ...r,
+            wsIsOther: !isLevel012(r.worksheet),
+            Benchling: normalizeBenchling(r.Benchling),
+          }));
+
+        if (!alive) return;
+        setData({ members: json.members || [], rows, updatedAt: json.updatedAt || null });
+        setError("");
+      } catch (e) {
+        if (alive) setError(String(e?.message || e));
+      } finally {
+        if (alive) setLoading(false);
       }
+    })();
 
-      if (json.error) throw new Error(json.error + (json.reason ? ": " + json.reason : ""));
-
-      // 前端保險：忽略 all_plasmids，並標記 Other
-      const rows = (json.rows || [])
-        .filter(r => !isAllPlasmids(r.worksheet))
-        .map(r => ({
-          ...r,
-          wsIsOther: !isLevel012(r.worksheet),
-          Benchling: normalizeBenchling(r.Benchling),
-        }));
-
-      if (!alive) return;
-      setData({ members: json.members || [], rows, updatedAt: json.updatedAt || null });
-      setError("");
-    } catch (e) {
-      if (alive) setError(String(e?.message || e));
-    } finally {
-      if (alive) setLoading(false);
-    }
-  })();
-
-  return () => { alive = false; };
-}, [idToken]);
-
+    return () => {
+      alive = false;
+    };
+  }, [idToken]);
 
   useEffect(() => {
     setWorksheet("all");
     setPage(1);
   }, [member, group]);
 
+  /** Member 選項（顯示「10 · YiFeng」） */
   const memberOptions = useMemo(() => {
     const arr = data.members.map((m) => ({
       value: m.memberId || m.name,
@@ -147,21 +149,23 @@ useEffect(() => {
     return ["all", ...arr];
   }, [data.members]);
 
-  // Group 只有 all / Other（如果沒有 Other 資料，就只顯示 all）
+  /** Group 選項：只有 all / Other（沒 Other 就只顯示 all） */
   const groupOptions = useMemo(() => {
-    const hasOther = (data.rows || []).some(r => r.wsIsOther);
+    const hasOther = (data.rows || []).some((r) => r.wsIsOther);
     return hasOther ? ["all", "Other"] : ["all"];
   }, [data.rows]);
 
-  // Worksheet 選項：依 member + group 篩選後再蒐集
+  /** Worksheet 選項：依 member + group 篩後蒐集 */
   const worksheetOptions = useMemo(() => {
     let pool = data.rows;
-    if (member !== "all") pool = pool.filter((r) => r.memberId === member || r.memberName === member);
+    if (member !== "all")
+      pool = pool.filter((r) => r.memberId === member || r.memberName === member);
     if (group === "Other") pool = pool.filter((r) => r.wsIsOther === true);
     const set = new Set(pool.map((r) => r.worksheet).filter(Boolean));
     return ["all", ...Array.from(set).sort(naturalCompare)];
   }, [member, group, data.rows]);
 
+  /** 篩選 + 排序 + 搜尋 */
   const filtered = useMemo(() => {
     const needles = q.toLowerCase().split(/\s+/).filter(Boolean);
     const xs = data.rows.filter((r) => {
@@ -171,15 +175,25 @@ useEffect(() => {
 
       if (needles.length === 0) return true;
 
-      const bench = typeof r.Benchling === "string"
-        ? r.Benchling
-        : (r.Benchling && (r.Benchling.url || r.Benchling.text)) || "";
+      const bench =
+        typeof r.Benchling === "string"
+          ? r.Benchling
+          : (r.Benchling && (r.Benchling.url || r.Benchling.text)) || "";
 
       const hay = [
-        r.Plasmid_Name, r.Plasmid_Information, r.Antibiotics,
-        r.Descriptions, r["Box_(Location)"], bench,
-        r.memberId, r.memberName, r.worksheet
-      ].filter(Boolean).join(" ").toLowerCase();
+        r.Plasmid_Name,
+        r.Plasmid_Information,
+        r.Antibiotics,
+        r.Descriptions,
+        r["Box_(Location)"],
+        bench,
+        r.memberId,
+        r.memberName,
+        r.worksheet,
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
 
       return needles.every((n) => hay.includes(n));
     });
@@ -201,60 +215,83 @@ useEffect(() => {
 
   function changeSort(key) {
     if (sortKey === key) setSortDir(sortDir === "asc" ? "desc" : "asc");
-    else { setSortKey(key); setSortDir("asc"); }
+    else {
+      setSortKey(key);
+      setSortDir("asc");
+    }
   }
 
   return (
     <div style={styles.page}>
+      {/* Header：logo + (title / search / updated)，右側登入狀態 */}
       <header style={styles.header}>
         <div style={styles.headerLeft}>
-          <div style={styles.logo}>PB</div>
+          <div style={styles.logo} aria-hidden="true" />
           <div>
             <div style={styles.title}>Plasmid Browser</div>
-            <div style={styles.subtitle}>
-              {data.updatedAt ? "Updated: " + new Date(data.updatedAt).toLocaleString() : ""}
+            <div style={{ marginTop: 6 }}>
+              <input
+                value={q}
+                onChange={(e) => {
+                  setQ(e.target.value);
+                  setPage(1);
+                }}
+                placeholder="keyword search"
+                style={styles.search}
+              />
             </div>
+            {data.updatedAt ? (
+              <div style={styles.subtitle}>
+                Updated: {new Date(data.updatedAt).toLocaleString()}
+              </div>
+            ) : null}
           </div>
         </div>
-
-        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-          <div style={{ width: 360, maxWidth: "54vw" }}>
-            <input
-              value={q}
-              onChange={(e) => { setQ(e.target.value); setPage(1); }}
-              placeholder="Search: e.g. NRC4 mCherry, kan, box A1…"
-              style={styles.search}
-            />
-          </div>
-          <div style={{ fontSize: 12, color: "#6b7280" }}>
-            {authEmail ? `Signed in: ${authEmail}` : <div id="signin-btn" />}
-          </div>
+        <div style={styles.signedIn}>
+          {authEmail ? `Signed in: ${authEmail}` : <div id="signin-btn" />}
         </div>
       </header>
 
       {!idToken ? (
-        <div style={{ padding: 16 }}>請先使用 Google 帳號登入（Workspace 或白名單 Gmail）。</div>
+        <div style={{ padding: 16 }}>
+          請先使用 Google 帳號登入（Workspace 或白名單 Gmail）。
+        </div>
       ) : null}
 
       <main style={styles.main}>
-        <div className="filters" style={styles.filters}>
-          <Select label="Member" value={member} onChange={setMember} options={memberOptions} />
-          <Select label="Group"  value={group}  onChange={setGroup}  options={groupOptions} />
-          <Select label="Worksheet" value={worksheet} onChange={setWorksheet} options={worksheetOptions} />
-          <Select
-            label="Sort"
-            value={sortKey + ":" + sortDir}
-            onChange={(v) => { const [k, d] = String(v).split(":"); setSortKey(k); setSortDir(d || "asc"); }}
-            options={columns.flatMap((c) => [c.key + ":asc", c.key + ":desc"])}
-            renderOption={(opt) => {         // ← 用 renderOption
-              const v = (typeof opt === 'string' ? opt : opt.value);
-              const [k, d] = String(v).split(":");
-              const col = columns.find((c) => c.key === k);
-              return (col ? col.label : k) + " (" + (d || "asc") + ")";
-            }}
-          />
+        {/* Controls：兩欄（手機自動 1 欄） */}
+        <div className="controls" style={styles.controls}>
+          <div style={styles.controlCol}>
+            <Select label="Member" value={member} onChange={setMember} options={memberOptions} />
+            <Select
+              label="Worksheet"
+              value={worksheet}
+              onChange={setWorksheet}
+              options={worksheetOptions}
+            />
+          </div>
+          <div style={styles.controlCol}>
+            <Select label="Group" value={group} onChange={setGroup} options={groupOptions} />
+            <Select
+              label="Sort"
+              value={sortKey + ":" + sortDir}
+              onChange={(v) => {
+                const [k, d] = String(v).split(":");
+                setSortKey(k);
+                setSortDir(d || "asc");
+              }}
+              options={columns.flatMap((c) => [c.key + ":asc", c.key + ":desc"])}
+              renderOption={(opt) => {
+                const v = typeof opt === "string" ? opt : opt.value;
+                const [k, d] = String(v).split(":");
+                const col = columns.find((c) => c.key === k);
+                return (col ? col.label : k) + " (" + (d || "asc") + ")";
+              }}
+            />
+          </div>
         </div>
 
+        {/* Table */}
         <div style={styles.card}>
           <div style={styles.cardTop}>
             <span style={{ color: "#4b5563", fontSize: 14 }}>
@@ -268,8 +305,14 @@ useEffect(() => {
               <thead style={{ background: "#f3f4f6" }}>
                 <tr>
                   {columns.map((c) => (
-                    <th key={c.key} style={styles.th} onClick={() => changeSort(c.key)} title="Click to sort">
-                      {c.label}{sortKey === c.key ? (sortDir === "asc" ? " ▲" : " ▼") : ""}
+                    <th
+                      key={c.key}
+                      style={styles.th}
+                      onClick={() => changeSort(c.key)}
+                      title="Click to sort"
+                    >
+                      {c.label}
+                      {sortKey === c.key ? (sortDir === "asc" ? " ▲" : " ▼") : ""}
                     </th>
                   ))}
                   <th style={{ ...styles.th, textAlign: "right" }}>Member / Sheet</th>
@@ -278,7 +321,9 @@ useEffect(() => {
               <tbody>
                 {pageRows.length === 0 && !loading ? (
                   <tr>
-                    <td colSpan={columns.length + 1} style={styles.empty}>No matches. Try a different keyword or filter.</td>
+                    <td colSpan={columns.length + 1} style={styles.empty}>
+                      No matches. Try a different keyword or filter.
+                    </td>
                   </tr>
                 ) : (
                   pageRows.map((r, i) => (
@@ -288,7 +333,15 @@ useEffect(() => {
                           {renderCell(c.key, r)}
                         </td>
                       ))}
-                      <td style={{ ...styles.td, textAlign: "right", whiteSpace: "nowrap", fontSize: 12, color: "#6b7280" }}>
+                      <td
+                        style={{
+                          ...styles.td,
+                          textAlign: "right",
+                          whiteSpace: "nowrap",
+                          fontSize: 12,
+                          color: "#6b7280",
+                        }}
+                      >
                         {(r.memberId || r.memberName) + " · " + (r.worksheet || "")}
                       </td>
                     </tr>
@@ -298,34 +351,65 @@ useEffect(() => {
             </table>
           </div>
 
+          {/* Pagination */}
           <div style={styles.cardBottom}>
             <div>
-              Page {page} / {pageCount} {total > 0 ? " · Showing " + (start + 1) + "–" + Math.min(total, start + CONFIG.PAGE_SIZE) : ""}
+              Page {page} / {pageCount}{" "}
+              {total > 0
+                ? " · Showing " +
+                  (start + 1) +
+                  "–" +
+                  Math.min(total, start + CONFIG.PAGE_SIZE)
+                : ""}
             </div>
             <div style={{ display: "flex", gap: 6 }}>
-              <button style={styles.btn} disabled={page <= 1} onClick={() => setPage(1)}>First</button>
-              <button style={styles.btn} disabled={page <= 1} onClick={() => setPage(Math.max(1, page - 1))}>Prev</button>
-              <button style={styles.btn} disabled={page >= pageCount} onClick={() => setPage(Math.min(pageCount, page + 1))}>Next</button>
-              <button style={styles.btn} disabled={page >= pageCount} onClick={() => setPage(pageCount)}>Last</button>
+              <button style={styles.btn} disabled={page <= 1} onClick={() => setPage(1)}>
+                First
+              </button>
+              <button
+                style={styles.btn}
+                disabled={page <= 1}
+                onClick={() => setPage(Math.max(1, page - 1))}
+              >
+                Prev
+              </button>
+              <button
+                style={styles.btn}
+                disabled={page >= pageCount}
+                onClick={() => setPage(Math.min(pageCount, page + 1))}
+              >
+                Next
+              </button>
+              <button
+                style={styles.btn}
+                disabled={page >= pageCount}
+                onClick={() => setPage(pageCount)}
+              >
+                Last
+              </button>
             </div>
           </div>
         </div>
 
         <p style={{ marginTop: 8, fontSize: 12, color: "#6b7280" }}>
-          Tip: 「Group → Other」會只顯示非 Level 0/1/2 的工作表；`all_plasmids` 已自動忽略，不會重覆。
+          Tip: 「Group → Other」會只顯示非 Level 0/1/2 的工作表；<code>all_plasmids</code> 已自動忽略。
         </p>
       </main>
     </div>
   );
 }
 
+/** Select（支援字串或 {value,label}） */
 function Select({ label, value, onChange, options, renderOption }) {
-  const norm = (opt) => (typeof opt === 'string' ? { value: opt, label: opt } : opt);
+  const norm = (opt) => (typeof opt === "string" ? { value: opt, label: opt } : opt);
   return (
     <label style={{ display: "flex", flexDirection: "column", fontSize: 14, gap: 4 }}>
       <span style={{ color: "#374151" }}>{label}</span>
-      <select value={value} onChange={(e) => onChange(e.target.value)}
-              style={{ border: "1px solid #d1d5db", borderRadius: 8, padding: "6px 8px", fontSize: 14 }}>
+      <select
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        style={{ border: "1px solid #d1d5db", borderRadius: 8, padding: "6px 8px", fontSize: 14 }}
+      >
         {options.map((opt) => {
           const o = norm(opt);
           return (
@@ -339,7 +423,7 @@ function Select({ label, value, onChange, options, renderOption }) {
   );
 }
 
-
+/** Cell renderers */
 function renderCell(key, row) {
   const v = row[key];
 
@@ -357,13 +441,7 @@ function renderCell(key, row) {
       return <span style={styles.noData}>no data</span>;
     }
     return (
-      <a
-        href={url}
-        target="_blank"
-        rel="noreferrer"
-        aria-label="Open Benchling link"
-        style={styles.linkBtn}
-      >
+      <a href={url} target="_blank" rel="noreferrer" aria-label="Open Benchling link" style={styles.linkBtn}>
         link here
       </a>
     );
@@ -372,9 +450,14 @@ function renderCell(key, row) {
   return <span>{String(v || "")}</span>;
 }
 
+/** helpers */
 function shortUrl(u) {
-  try { const x = new URL(String(u || "")); return x.hostname.replace(/^www\./, "") + x.pathname.replace(/\/$/, ""); }
-  catch { return String(u || ""); }
+  try {
+    const x = new URL(String(u || ""));
+    return x.hostname.replace(/^www\./, "") + x.pathname.replace(/\/$/, "");
+  } catch {
+    return String(u || "");
+  }
 }
 function normalizeBenchling(b) {
   if (!b) return null;
@@ -386,14 +469,63 @@ function naturalCompare(a, b) {
   return String(a).localeCompare(String(b), undefined, { numeric: true, sensitivity: "base" });
 }
 
+/** styles */
 const styles = {
   page: { minHeight: "100vh", background: "#f9fafb", color: "#111827" },
+
+  // Header：左 logo、右邊堆疊 title + search + updated
   header: {
-    position: "sticky", top: 0, zIndex: 10, background: "rgba(255,255,255,0.9)",
-    borderBottom: "1px solid #e5e7eb", padding: "10px 16px", display: "flex",
-    gap: 12, alignItems: "center", justifyContent: "space-between", backdropFilter: "saturate(180%) blur(6px)",
+    position: "sticky",
+    top: 0,
+    zIndex: 10,
+    background: "rgba(255,255,255,0.95)",
+    borderBottom: "1px solid #e5e7eb",
+    padding: "10px 16px",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
+    backdropFilter: "saturate(180%) blur(6px)",
   },
-   linkBtn: {
+  headerLeft: { display: "flex", alignItems: "center", gap: 12 },
+  logo: { width: 48, height: 48, borderRadius: 6, background: "#16a34a", border: "3px solid #0f5132" },
+  title: { fontSize: 18, fontWeight: 700 },
+  subtitle: { marginTop: 6, fontSize: 12, color: "#6b7280" },
+  signedIn: { fontSize: 12, color: "#6b7280", display: "flex", alignItems: "center" },
+
+  // 搜尋框（header 內）
+  search: {
+    width: "min(64vw, 420px)",
+    border: "2px solid #111827",
+    borderRadius: 8,
+    padding: "8px 10px",
+    fontSize: 14,
+    background: "#e5e7eb",
+  },
+
+  // Controls：兩欄（手機 1 欄）
+  controls: { display: "grid", gridTemplateColumns: "1fr", gap: 8, marginBottom: 12 },
+  controlCol: { display: "grid", gridTemplateRows: "auto auto", gap: 8 },
+
+  main: { maxWidth: 1120, margin: "0 auto", padding: 16 },
+
+  card: {
+    background: "white",
+    border: "1px solid #e5e7eb",
+    borderRadius: 16,
+    overflow: "hidden",
+    boxShadow: "0 1px 2px rgba(0,0,0,0.04)",
+  },
+  cardTop: { display: "flex", justifyContent: "space-between", padding: "8px 12px", borderBottom: "1px solid #e5e7eb" },
+  table: { width: "100%", borderCollapse: "collapse", fontSize: 14 },
+  th: { textAlign: "left", padding: "10px 12px", whiteSpace: "nowrap", cursor: "pointer" },
+  td: { padding: "10px 12px", verticalAlign: "top" },
+  empty: { padding: "32px 12px", textAlign: "center", color: "#6b7280" },
+  cardBottom: { display: "flex", justifyContent: "space-between", padding: "8px 12px", borderTop: "1px solid #e5e7eb", fontSize: 14 },
+  btn: { border: "1px solid #e5e7eb", background: "white", padding: "6px 10px", borderRadius: 8, cursor: "pointer" },
+
+  // Benchling 欄的按鈕與空值
+  linkBtn: {
     display: "inline-block",
     border: "1px solid #e5e7eb",
     padding: "4px 8px",
@@ -405,35 +537,17 @@ const styles = {
     background: "#f0fdf4",
     whiteSpace: "nowrap",
   },
-  noData: {
-    color: "#9ca3af",
-    fontStyle: "italic",
-    fontSize: 12,
-  },
-  headerLeft: { display: "flex", alignItems: "center", gap: 10 },
-  logo: { width: 36, height: 36, borderRadius: 10, background: "#16a34a", color: "white",
-          display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700 },
-  title: { fontSize: 18, fontWeight: 600 },
-  subtitle: { fontSize: 12, color: "#6b7280" },
-  search: { width: "100%", border: "1px solid #e5e7eb", borderRadius: 10, padding: "8px 10px", fontSize: 14,
-            boxShadow: "0 1px 2px rgba(0,0,0,0.03)" },
-  main: { maxWidth: 1120, margin: "0 auto", padding: 16 },
-  filters: { display: "grid", gridTemplateColumns: "1fr", gap: 8, marginBottom: 12 },
-  card: { background: "white", border: "1px solid #e5e7eb", borderRadius: 16, overflow: "hidden",
-          boxShadow: "0 1px 2px rgba(0,0,0,0.04)" },
-  cardTop: { display: "flex", justifyContent: "space-between", padding: "8px 12px", borderBottom: "1px solid #e5e7eb" },
-  table: { width: "100%", borderCollapse: "collapse", fontSize: 14 },
-  th: { textAlign: "left", padding: "10px 12px", whiteSpace: "nowrap", cursor: "pointer" },
-  td: { padding: "10px 12px", verticalAlign: "top" },
-  empty: { padding: "32px 12px", textAlign: "center", color: "#6b7280" },
-  cardBottom: { display: "flex", justifyContent: "space-between", padding: "8px 12px", borderTop: "1px solid #e5e7eb", fontSize: 14 },
-  btn: { border: "1px solid #e5e7eb", background: "white", padding: "6px 10px", borderRadius: 8, cursor: "pointer" },
+  noData: { color: "#9ca3af", fontStyle: "italic", fontSize: 12 },
 };
 
+// RWD：>=640px 時把 controls 變成兩欄
 if (typeof document !== "undefined") {
-  const css = `@media (min-width: 640px) { .filters { grid-template-columns: repeat(4, 1fr) !important; } }`;
+  const css = `
+    @media (min-width: 640px) {
+      .controls { grid-template-columns: 1fr 1fr !important; }
+    }
+  `;
   const tag = document.createElement("style");
   tag.textContent = css;
   document.head.appendChild(tag);
 }
-
