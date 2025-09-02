@@ -46,6 +46,29 @@ function isLevel012(name) {
   );
 }
 
+/** 共用分頁器 */
+function Pager({ page, pageCount, total, start, pageSize, setPage, top }) {
+  const showing = total > 0 ? ` · Showing ${start + 1}–${Math.min(total, start + pageSize)}` : "";
+  const Btn = ({ disabled, onClick, children }) => (
+    <button onClick={onClick} disabled={disabled} style={disabled ? styles.btnDisabled : styles.btnPrimary}>
+      {children}
+    </button>
+  );
+  return (
+    <div style={{ ...styles.pager, ...(top ? { borderBottom: "1px solid #e5e7eb" } : { borderTop: "1px solid #e5e7eb" }) }}>
+      <div>
+        Page {page} / {pageCount} {showing}
+      </div>
+      <div style={{ display: "flex", gap: 6 }}>
+        <Btn disabled={page <= 1} onClick={() => setPage(1)}>First</Btn>
+        <Btn disabled={page <= 1} onClick={() => setPage(Math.max(1, page - 1))}>Prev</Btn>
+        <Btn disabled={page >= pageCount} onClick={() => setPage(Math.min(pageCount, page + 1))}>Next</Btn>
+        <Btn disabled={page >= pageCount} onClick={() => setPage(pageCount)}>Last</Btn>
+      </div>
+    </div>
+  );
+}
+
 export default function App() {
   const [data, setData] = useState({ members: [], rows: [], updatedAt: null });
   const [loading, setLoading] = useState(true);
@@ -264,6 +287,17 @@ export default function App() {
                 {error ? <span style={{ color: "#b91c1c", fontSize: 14 }}>{error}</span> : null}
               </div>
 
+              {/* ★ 上方分頁器 */}
+              <Pager
+                top
+                page={page}
+                pageCount={pageCount}
+                total={total}
+                start={start}
+                pageSize={CONFIG.PAGE_SIZE}
+                setPage={setPage}
+              />
+
               <table style={styles.table}>
                 <thead style={{ background: "#f3f4f6" }}>
                   <tr>
@@ -297,17 +331,15 @@ export default function App() {
                 </tbody>
               </table>
 
-              <div style={styles.cardBottom}>
-                <div>
-                  Page {page} / {pageCount} {total > 0 ? " · Showing " + (start + 1) + "–" + Math.min(total, start + CONFIG.PAGE_SIZE) : ""}
-                </div>
-                <div style={{ display: "flex", gap: 6 }}>
-                  <button style={styles.btn} disabled={page <= 1} onClick={() => setPage(1)}>First</button>
-                  <button style={styles.btn} disabled={page <= 1} onClick={() => setPage(Math.max(1, page - 1))}>Prev</button>
-                  <button style={styles.btn} disabled={page >= pageCount} onClick={() => setPage(Math.min(pageCount, page + 1))}>Next</button>
-                  <button style={styles.btn} disabled={page >= pageCount} onClick={() => setPage(pageCount)}>Last</button>
-                </div>
-              </div>
+              {/* ★ 下方分頁器 */}
+              <Pager
+                page={page}
+                pageCount={pageCount}
+                total={total}
+                start={start}
+                pageSize={CONFIG.PAGE_SIZE}
+                setPage={setPage}
+              />
             </div>
 
             <p style={{ marginTop: 8, fontSize: 12, color: "#6b7280" }}>
@@ -490,15 +522,32 @@ const styles = {
   td: { padding: "10px 12px", verticalAlign: "top" },
   empty: { padding: "32px 12px", textAlign: "center", color: "#6b7280" },
 
-  // 分頁按鈕：淺灰底深字（可見）
-  cardBottom: { display: "flex", justifyContent: "space-between", padding: "8px 12px", borderTop: "1px solid #e5e7eb", fontSize: 14 },
-  btn: {
-    border: "1px solid #cbd5e1",
-    background: "#eef2f7",
-    color: "#111827",
+  // 分頁器 & 按鈕
+  pager: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    padding: "8px 12px",
+    fontSize: 14,
+    background: "white",
+  },
+  btnPrimary: {
+    border: "1px solid #16a34a",
+    background: "#16a34a",
+    color: "#ffffff",
     padding: "6px 10px",
     borderRadius: 8,
     cursor: "pointer",
+    fontWeight: 600,
+  },
+  btnDisabled: {
+    border: "1px solid #e5e7eb",
+    background: "#f3f4f6",
+    color: "#9ca3af",
+    padding: "6px 10px",
+    borderRadius: 8,
+    cursor: "not-allowed",
+    fontWeight: 600,
   },
 
   // Benchling 欄
@@ -532,4 +581,5 @@ if (typeof document !== "undefined") {
   tag.textContent = css;
   document.head.appendChild(tag);
 }
+
 
