@@ -299,56 +299,36 @@ export default function App() {
               />
 
               <table style={styles.table}>
-                   <thead style={{ background: "#f3f4f6" }}>
-                        <tr>
-                          {columns.map((c) => (
-                            <th
-                              key={c.key}
-                              style={{ 
-                                ...styles.th,
-                                ...(c.key === "Benchling" ? styles.colBench : null)  // ← Benchling 欄加寬
-                              }}
-                              onClick={() => changeSort(c.key)}
-                              title="Click to sort"
-                            >
-                              {c.label}{sortKey === c.key ? (sortDir === "asc" ? " ▲" : " ▼") : ""}
-                            </th>
-                          ))}
-                      
-                          {/* 最右的「Member / Sheet」專用較寬表頭 */}
-                          <th style={{ ...styles.th, ...styles.colMSHeader }}>
-                            Member / Sheet
-                          </th>
-                        </tr>
-                      </thead>
-                       <tbody>
-                            {pageRows.length === 0 && !loading ? (
-                              <tr>
-                                <td colSpan={columns.length + 1} style={styles.empty}>No matches. Try a different keyword or filter.</td>
-                              </tr>
-                            ) : (
-                              pageRows.map((r, i) => (
-                                <tr key={i} style={{ background: i % 2 ? "#ffffff" : "#fafafa" }}>
-                                  {columns.map((c) => (
-                                    <td
-                                      key={c.key}
-                                      style={{
-                                        ...styles.td,
-                                        ...(c.key === "Benchling" ? styles.colBench : null), // ← Benchling 欄加寬
-                                      }}
-                                    >
-                                      {renderCell(c.key, r)}
-                                    </td>
-                                  ))}
-                          
-                                  {/* 最右的 Member / Sheet 欄加寬 + 右 padding */}
-                                  <td style={{ ...styles.td, ...styles.colMSCell }}>
-                                    {(r.memberId || r.memberName) + " · " + (r.worksheet || "")}
-                                  </td>
-                                </tr>
-                              ))
-                            )}
-                          </tbody>
+                <thead style={{ background: "#f3f4f6" }}>
+                  <tr>
+                    {columns.map((c) => (
+                      <th key={c.key} style={styles.th} onClick={() => changeSort(c.key)} title="Click to sort">
+                        {c.label}{sortKey === c.key ? (sortDir === "asc" ? " ▲" : " ▼") : ""}
+                      </th>
+                    ))}
+                    <th style={{ ...styles.th, textAlign: "right" }}>Member / Sheet</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {pageRows.length === 0 && !loading ? (
+                    <tr>
+                      <td colSpan={columns.length + 1} style={styles.empty}>No matches. Try a different keyword or filter.</td>
+                    </tr>
+                  ) : (
+                    pageRows.map((r, i) => (
+                      <tr key={i} style={{ background: i % 2 ? "#ffffff" : "#fafafa" }}>
+                        {columns.map((c) => (
+                          <td key={c.key} style={styles.td}>
+                            {renderCell(c.key, r)}
+                          </td>
+                        ))}
+                        <td style={{ ...styles.td, textAlign: "right", whiteSpace: "nowrap", fontSize: 12, color: "#6b7280" }}>
+                          {(r.memberId || r.memberName) + " · " + (r.worksheet || "")}
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
               </table>
 
               {/* ★ 下方分頁器 */}
@@ -418,6 +398,11 @@ function Select({ label, value, onChange, options, renderOption }) {
 function renderCell(key, row) {
   const v = row[key];
 
+  if (key === "Plasmid_Information") {
+    // ★ Info 欄改可換行：不再把表格撐爆寬度，只增加列高
+    return <span style={styles.infoText}>{String(v || "")}</span>;
+  }
+
   if (key === "Descriptions") {
     return (
       <span style={{ display: "block", maxWidth: 520, overflow: "hidden", textOverflow: "ellipsis" }}>
@@ -460,9 +445,8 @@ const styles = {
     WebkitOverflowScrolling: "touch",
   },
   contentMin: {
-    minWidth: 980,
+    minWidth: 980, // 與表格一致
     margin: "0 auto",
-    paddingRight: 24,            // ← 右側保留一點空間，避免最後一欄貼邊被蓋到
   },
 
   /* 置頂區（只在垂直方向 sticky） */
@@ -571,6 +555,15 @@ const styles = {
     fontWeight: 600,
   },
 
+  // ★ Info 欄位可換行
+  infoText: {
+    display: "block",
+    whiteSpace: "normal",
+    overflowWrap: "anywhere",
+    wordBreak: "break-word",
+    lineHeight: 1.35,
+  },
+
   // Benchling 欄
   linkBtn: {
     display: "inline-block",
@@ -585,25 +578,7 @@ const styles = {
     whiteSpace: "nowrap",
   },
   noData: { color: "#9ca3af", fontStyle: "italic", fontSize: 12 },
-  // 讓 Benchling 欄有最小寬度、置中
-    colBench: {
-      minWidth: 110,
-      textAlign: "center",
-    },
 
-    // 最右側 Member / Sheet 欄：給固定最小寬 + 多一點右側 padding
-  colMSHeader: {
-    minWidth: 200,
-    textAlign: "right",
-    paddingRight: 18,
-  },
-  colMSCell: {
-    minWidth: 200,
-    textAlign: "right",
-    paddingRight: 18,
-    whiteSpace: "nowrap",
-  },
-  
   // Footer（登入狀態）
   footer: { borderTop: "1px solid #e5e7eb", background: "#fff" },
   footerInner: { maxWidth: 1120, margin: "0 auto", padding: "10px 16px", fontSize: 12, color: "#6b7280" },
@@ -620,5 +595,6 @@ if (typeof document !== "undefined") {
   tag.textContent = css;
   document.head.appendChild(tag);
 }
+
 
 
